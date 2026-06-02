@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>申请新建项目 — 内部项目管理原型图</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/apply-form.css" />
+</head>
+<body>
+  <div class="apply-form-app" id="applyFormRoot">
+    <header class="apply-form-topbar">
+      <a href="index.html#apply" id="btnBackApply">← 返回申请列表</a>
+      <select class="role-select" id="roleSelect" aria-label="原型角色" style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;min-width:260px;font-size:13px"></select>
+    </header>
+    <div class="apply-form-head">
+      <div class="eyebrow">立项申请</div>
+      <h2 id="pageTitle">申请新建项目</h2>
+      <p class="lead" id="pageLead">填写项目基础信息、人员组织与立项材料，确认后提交事业部负责人审批。</p>
+    </div>
+    <main class="apply-form-body" id="applyFormMain"></main>
+    <footer class="apply-form-footer" id="applyFormFooter"></footer>
+  </div>
+  <div class="toast" id="toast"></div>
+  <div class="modal-overlay confirm-modal" id="confirmModal">
+    <div class="modal">
+      <div class="modal-header"><span id="confirmTitle">请确认</span></div>
+      <div class="modal-body"><div id="confirmMessage"></div></div>
+      <div class="modal-footer" style="padding:12px 20px;border-top:1px solid #e8e8e8;display:flex;justify-content:flex-end;gap:8px">
+        <button type="button" class="btn" id="confirmCancel">取消</button>
+        <button type="button" class="btn btn-primary" id="confirmOk">确认</button>
+      </div>
+    </div>
+  </div>
+  <script src="js/store.js"></script>
+  <script src="js/approval.js"></script>
+  <script src="js/project-edit.js"></script>
+  <script src="js/apply-form.js"></script>
+</body>
+</html>

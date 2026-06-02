@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>项目详情 — 内部项目管理原型图</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/detail.css" />
+</head>
+<body>
+  <div class="detail-app" id="detailRoot">
+    <div class="app-inner">
+      <!-- [公共] 顶栏 -->
+      <header class="detail-topbar">
+        <div class="brand">
+          <a href="index.html">内部项目管理原型图</a>
+        </div>
+        <select class="role-select" id="roleSelect" aria-label="原型角色" style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;min-width:260px;font-size:13px"></select>
+      </header>
+
+      <!-- [公共] 返回 + 页头 -->
+      <div class="detail-pagehead">
+        <div class="back-row">
+          <button type="button" class="btn-back" id="btnBack">← 返回列表</button>
+        </div>
+        <div class="pagehead-main">
+          <div>
+            <h2 id="pageheadTitle">加载中…</h2>
+            <div class="pagehead-meta" id="pageheadMeta"></div>
+          </div>
+          <div class="pagehead-actions" id="pageheadActions"></div>
+        </div>
+      </div>
+
+      <!-- [公共] Tab（申请模式隐藏） -->
+      <nav class="detail-tabs" id="detailTabsWrap">
+        <div id="detailTabs"></div>
+      </nav>
+
+      <!-- Tab 内容 / 申请表单 -->
+      <main class="detail-content" id="detailContent"></main>
+    </div>
+  </div>
+
+  <!-- [公共] 弹窗 -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <div class="modal-header">
+        <span id="modalTitle">标题</span>
+        <button type="button" class="modal-close" id="modalClose" aria-label="关闭">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer" id="modalFooter"></div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <div class="modal-overlay confirm-modal" id="confirmModal">
+    <div class="modal">
+      <div class="modal-header"><span id="confirmTitle">请确认</span></div>
+      <div class="modal-body"><div id="confirmMessage"></div></div>
+      <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+        <button type="button" class="btn" id="confirmCancel">取消</button>
+        <button type="button" class="btn btn-primary" id="confirmOk">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay flow-modal" id="flowModal">
+    <div class="modal">
+      <div class="modal-header">
+        <span id="flowModalTitle">审批流程</span>
+        <button type="button" class="modal-close" id="flowFlowClose" aria-label="关闭">&times;</button>
+      </div>
+      <div class="modal-body" id="flowModalBody"></div>
+      <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end">
+        <button type="button" class="btn" id="flowModalOk">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/store.js?v=2"></script>
+  <script src="js/approval.js?v=2"></script>
+  <script src="js/project-edit.js?v=2"></script>
+  <script src="js/detail.js?v=2"></script>
+</body>
+</html>

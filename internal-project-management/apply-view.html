@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>查看立项申请 — 内部项目管理原型图</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/apply-form.css" />
+</head>
+<body class="apply-view">
+  <div class="apply-form-app" id="applyFormRoot">
+    <header class="apply-form-topbar">
+      <a href="index.html#apply" id="btnBackApply">← 返回申请列表</a>
+      <span id="viewStatusBadge"></span>
+    </header>
+    <div class="apply-form-head">
+      <div class="eyebrow">立项申请</div>
+      <h2 id="pageTitle">查看立项申请</h2>
+      <p class="lead" id="pageLead">审批通过前仅展示本申请表单；通过后将进入内部项目管理并开放详情 Tab。</p>
+    </div>
+    <main class="apply-form-body" id="applyFormMain"></main>
+    <footer class="apply-form-footer" id="applyFormFooter"></footer>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="js/store.js"></script>
+  <script src="js/approval.js"></script>
+  <script src="js/apply-form.js"></script>
+</body>
+</html>
