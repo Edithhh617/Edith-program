@@ -77,6 +77,19 @@
     };
   }
 
+  function resolveInitiateTime(p) {
+    if (p.initiateTime) return p.initiateTime;
+    if (p.initiateDate) return p.initiateDate.length === 7 ? `${p.initiateDate}-01` : p.initiateDate;
+    if (p.establish) return `${p.establish}-01`;
+    return "-";
+  }
+
+  function resolveTerminateTime(p) {
+    if (p.terminateTime) return p.terminateTime;
+    if (p.status === "下线" && p.offline && p.offline !== "-") return p.offline;
+    return "-";
+  }
+
   function buildTimeline(p) {
     const [y, m] = p.establish.split("-");
     const establishDate = `${y}-${m}-01`;
@@ -227,7 +240,6 @@
     if (!p.desc?.trim()) m.push("项目简介");
     if (!p.productOwner) m.push("项目产品负责人");
     if (!p.techLead) m.push("项目技术负责人");
-    if (p.scopeType === "外部" && !p.preProjectId?.trim()) m.push("关联预立项 ID");
     const files = p.applyFiles || {};
     if (!files.application) m.push("立项申请书");
     if (!files.approval) m.push("立项审批单");
@@ -422,6 +434,8 @@
 
   const PROJECTS = RAW.map((p) => {
     const project = { ...p };
+    project.initiateTime = resolveInitiateTime(project);
+    project.terminateTime = resolveTerminateTime(project);
     project.projectId = genProjectId(project);
     project.members = buildMembers(project);
     project.timeline = buildTimeline(project);
@@ -487,6 +501,8 @@
   function finishEstablishApproval(project) {
     delete project.applyStatus;
     project.projectId = genProjectId(project);
+    project.initiateTime = resolveInitiateTime(project);
+    project.terminateTime = resolveTerminateTime(project);
     project.pendingInfo = !project.desc?.trim();
     if (project.timeline?.[0]) {
       project.timeline[0].done = true;
