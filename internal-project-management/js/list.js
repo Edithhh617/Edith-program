@@ -281,7 +281,7 @@
     const tbody = document.getElementById("tableBody");
 
     if (!pageItems.length) {
-      tbody.innerHTML = `<tr><td colspan="11" class="empty-state">暂无数据</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" class="empty-state">暂无数据</td></tr>`;
     } else {
       tbody.innerHTML = pageItems
         .map(
@@ -293,6 +293,8 @@
           <td>${p.name}</td>
           <td><code style="font-size:12px">${p.projectId}</code></td>
           <td><span class="status-badge ${statusClass(p.status)}">${p.status}</span></td>
+          <td>${p.initiateTime || "-"}</td>
+          <td>${p.terminateTime || "-"}</td>
           <td>${p.online}</td>
           <td>${p.offline}</td>
           <td>${p.productOwner}</td>
