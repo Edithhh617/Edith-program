@@ -40,8 +40,6 @@
   function defaultApplyForm(p) {
     return {
       applyReason: p?.applyReason || "",
-      preProjectId: p?.preProjectId || "",
-      scopeType: p?.scopeType || "内部",
       initiateDate: p?.initiateDate || p?.establish?.slice(0, 7) || "",
       startDate: p?.startDate || "",
       files: p?.applyFiles || { application: "", approval: "", supplement: "" },
@@ -53,9 +51,6 @@
     const f = defaultApplyForm(p);
     const buOpts = Object.keys(BU_CODES)
       .map((b) => `<option value="${esc(b)}" ${p?.bu === b ? "selected" : ""}>${esc(b)}</option>`)
-      .join("");
-    const scopeOpts = ["内部", "外部"]
-      .map((s) => `<option value="${esc(s)}" ${f.scopeType === s ? "selected" : ""}>${esc(s)}</option>`)
       .join("");
     const dis = readonly ? "disabled" : "";
     const picker = (id, label, val) =>
@@ -91,14 +86,6 @@
           <div class="apply-field">
             <label>项目名称 <span class="req">*</span></label>
             <input id="applyName" ${dis} value="${esc(p?.name || "")}" placeholder="产品/项目名称" />
-          </div>
-          <div class="apply-field">
-            <label>关联预立项 ID</label>
-            <input id="applyPreId" ${dis} value="${esc(f.preProjectId)}" placeholder="外部项目必填" />
-          </div>
-          <div class="apply-field">
-            <label>内/外部 <span class="req">*</span></label>
-            <select id="applyScope" ${dis}>${scopeOpts}</select>
           </div>
           <div class="apply-field">
             <label>立项时间 <span class="req">*</span></label>
@@ -187,8 +174,6 @@
       bu,
       buLead: BU_LEADS[bu] || "",
       name: document.getElementById("applyName").value.trim(),
-      preProjectId: document.getElementById("applyPreId").value.trim(),
-      scopeType: document.getElementById("applyScope").value,
       initiateDate: initiate ? initiate.slice(0, 7) : "",
       startDate: document.getElementById("applyStart").value,
       establish: initiate ? initiate.slice(0, 7) : "",
@@ -209,9 +194,7 @@
     if (!data.applyReason) missing.push("申请原因");
     if (!data.bu) missing.push("负责事业部");
     if (!data.name) missing.push("项目名称");
-    if (!data.scopeType) missing.push("内/外部");
     if (!data.initiateDate) missing.push("立项时间");
-    if (data.scopeType === "外部" && !data.preProjectId) missing.push("关联预立项 ID");
     if (!data.productOwner) missing.push("项目产品负责人");
     if (!data.techLead) missing.push("项目技术负责人");
     if (forSubmit) {
@@ -230,6 +213,7 @@
         status: "开发中",
         online: "-",
         offline: "-",
+        terminateTime: "-",
         pendingApproval: false,
         createdAt: new Date().toLocaleString("zh-CN", { hour12: false }),
         attachments: [],
@@ -248,9 +232,8 @@
       techLead: data.techLead,
       desc: data.desc,
       applyReason: data.applyReason,
-      preProjectId: data.preProjectId,
-      scopeType: data.scopeType,
       initiateDate: data.initiateDate,
+      initiateTime: data.initiateDate ? (data.initiateDate.length === 7 ? `${data.initiateDate}-01` : data.initiateDate) : "-",
       startDate: data.startDate,
       applyFiles: data.files,
       materialNote: data.materialNote,
