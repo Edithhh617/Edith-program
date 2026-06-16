@@ -511,7 +511,7 @@
       </div>
 
       <div class="detail-section">
-        <div class="section-head"><h3>活动记录</h3></div>
+        <div class="section-head"><h3>操作日志</h3></div>
         <div class="activity-toolbar">
           <select id="activityTypeFilter" class="btn" style="height:32px">
             <option value="all">全部类型</option>
@@ -549,7 +549,7 @@
   }
 
   function renderActivities(list) {
-    if (!list.length) return '<div class="empty-state" style="padding:24px">暂无活动记录</div>';
+    if (!list.length) return '<div class="empty-state" style="padding:24px">暂无操作日志</div>';
     const typeMap = { create: "立项", sync: "同步", status: "状态", approval: "审批", member: "人员" };
     return list
       .map((a) => {
