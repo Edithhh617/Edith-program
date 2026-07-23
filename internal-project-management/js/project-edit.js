@@ -2,7 +2,7 @@
  * 项目基础信息 / 人员编辑弹窗（列表页、详情页共用）
  */
 (function () {
-  const { PEOPLE_POOL, BU_CODES, BU_LEADS, genProjectId, getRole, addActivity } = window.IPM;
+  const { PEOPLE_POOL, BU_CODES, BU_LEADS, genProjectId, getPersonBu, getRole, addActivity } = window.IPM;
 
   function esc(s) {
     if (s == null) return "";
@@ -127,16 +127,25 @@
     });
   }
 
-  function renderPeopleEditBody(p) {
+  function collectUnifiedMembers(p) {
     const m = p.members || {};
-    const cross =
-      m.crossBuMembers?.length ?
-        `<div class="cross-members-readonly">
-          <span class="field-hint">跨事业部协作成员（只读）</span>
-          <div class="member-tags">${m.crossBuMembers.map((x) => `<span class="member-tag cross">${esc(x.name)}（${esc(x.bu)}）</span>`).join("")}</div>
-        </div>`
-      : "";
+    const list = [];
+    const seen = new Set();
+    (m.buMembers || []).forEach((name) => {
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      list.push({ name, bu: p.bu || getPersonBu(name) });
+    });
+    (m.crossBuMembers || []).forEach((x) => {
+      const name = typeof x === "string" ? x : x?.name;
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      list.push({ name, bu: (typeof x === "object" && x.bu) || getPersonBu(name) });
+    });
+    return list;
+  }
 
+  function renderPeopleEditBody(p) {
     return `
       <div class="people-edit-form">
         <p class="form-section-title">项目负责人</p>
@@ -148,15 +157,14 @@
             <textarea id="peChangeReason" placeholder="变更产品/技术负责人时须填写说明"></textarea>
           </div>
         </div>
-        <p class="field-hint" style="margin-bottom:12px">变更<strong>产品/技术负责人</strong>须提交审批（与列表「编辑」逻辑一致）；本事业部成员可直接保存。</p>
-        <p class="form-section-title">本事业部项目成员</p>
-        <p class="field-hint" style="margin-bottom:8px">搜索姓名添加成员，点击标签可移除</p>
+        <p class="field-hint" style="margin-bottom:12px">变更<strong>产品/技术负责人</strong>须提交审批（与列表「编辑」逻辑一致）；项目成员可直接保存。保存后详情页仍按本事业部 / 跨事业部分开展示。</p>
+        <p class="form-section-title">项目成员</p>
+        <p class="field-hint" style="margin-bottom:8px">下方搜索姓名可添加成员（不区分事业部）；已添加成员点击 × 可移除</p>
         <div class="member-chip-list" id="peMemberChips"></div>
         <div class="people-picker people-picker-add" data-picker="peAdd">
-          <input type="text" class="people-picker-input" id="peAddInput" placeholder="搜索并添加成员…" autocomplete="off" />
+          <input type="text" class="people-picker-input" id="peAddInput" placeholder="搜索姓名添加成员…" autocomplete="off" />
           <ul class="people-picker-list" id="peAddList" role="listbox"></ul>
         </div>
-        ${cross}
       </div>`;
   }
 
@@ -201,27 +209,29 @@
 
   function bindPeopleEditForm(p) {
     const chipsEl = document.getElementById("peMemberChips");
-    let buMembers = [...(p.members?.buMembers || [])];
+    let members = collectUnifiedMembers(p);
 
     const getOwners = () => {
       const o = readPeopleEditOwners(p);
       return [o.productOwner, o.techLead];
     };
 
+    const memberNames = () => members.map((m) => m.name);
+
     const renderChips = () => {
-      if (!buMembers.length) {
+      if (!members.length) {
         chipsEl.innerHTML = '<span class="member-chips-empty">暂无成员，请下方搜索添加</span>';
         return;
       }
-      chipsEl.innerHTML = buMembers
+      chipsEl.innerHTML = members
         .map(
-          (n) =>
-            `<span class="member-chip">${esc(n)}<button type="button" class="member-chip-remove" data-name="${esc(n)}" aria-label="移除">×</button></span>`
+          (m) =>
+            `<span class="member-chip">${esc(m.name)}<span class="member-chip-bu">${esc(m.bu)}</span><button type="button" class="member-chip-remove" data-name="${esc(m.name)}" aria-label="移除">×</button></span>`
         )
         .join("");
       chipsEl.querySelectorAll(".member-chip-remove").forEach((btn) => {
         btn.addEventListener("click", () => {
-          buMembers = buMembers.filter((x) => x !== btn.dataset.name);
+          members = members.filter((x) => x.name !== btn.dataset.name);
           renderChips();
         });
       });
@@ -231,13 +241,16 @@
     const addList = document.getElementById("peAddList");
 
     const renderAddList = () => {
-      const exclude = [...getOwners(), ...buMembers];
+      const exclude = [...getOwners(), ...memberNames()];
       const items = filterPeoplePool(addInput.value, exclude).slice(0, 12);
       if (!items.length) {
         addList.innerHTML = `<li class="people-picker-empty">无匹配人员</li>`;
       } else {
         addList.innerHTML = items
-          .map((n) => `<li role="option" data-name="${esc(n)}">+ ${esc(n)}</li>`)
+          .map((n) => {
+            const bu = getPersonBu(n);
+            return `<li role="option" data-name="${esc(n)}" data-bu="${esc(bu)}">+ ${esc(n)}<span class="people-picker-bu">${esc(bu)}</span></li>`;
+          })
           .join("");
       }
       addList.classList.add("open");
@@ -250,8 +263,8 @@
       if (!li) return;
       e.preventDefault();
       const name = li.dataset.name;
-      if (!buMembers.includes(name)) {
-        buMembers.push(name);
+      if (!memberNames().includes(name)) {
+        members.push({ name, bu: li.dataset.bu || getPersonBu(name) });
         renderChips();
       }
       addInput.value = "";
@@ -265,20 +278,45 @@
     bindPeopleEditOwners(p);
 
     return () => ({
-      buMembers: [...buMembers],
+      members: members.map((m) => ({ name: m.name, bu: m.bu })),
       ...readPeopleEditOwners(p),
     });
   }
 
+  function formatMembersLabel(buNames, crossList) {
+    const parts = [...(buNames || [])];
+    (crossList || []).forEach((x) => {
+      const name = typeof x === "string" ? x : x?.name;
+      const bu = typeof x === "object" ? x?.bu : "";
+      if (name) parts.push(bu ? `${name}（${bu}）` : name);
+    });
+    return parts.join("、") || "—";
+  }
+
   function applyPeopleToProject(p, data) {
-    const oldMembers = [...(p.members?.buMembers || [])];
+    const oldBu = [...(p.members?.buMembers || [])];
+    const oldCross = [...(p.members?.crossBuMembers || [])];
     const productOwner = data.productOwner ?? p.productOwner;
     const techLead = data.techLead ?? p.techLead;
     if (!p.members) {
       p.members = { buLead: p.buLead, productOwner, techLead, buMembers: [], crossBuMembers: [] };
     }
-    p.members.buMembers = data.buMembers.filter((n) => n !== productOwner && n !== techLead);
-    return { oldMembers };
+    const buMembers = [];
+    const crossBuMembers = [];
+    const seen = new Set();
+    (data.members || []).forEach((m) => {
+      const name = typeof m === "string" ? m : m?.name;
+      if (!name || name === productOwner || name === techLead || seen.has(name)) return;
+      seen.add(name);
+      const bu = (typeof m === "object" && m.bu) || getPersonBu(name);
+      if (bu === p.bu) buMembers.push(name);
+      else crossBuMembers.push({ name, bu });
+    });
+    p.members.buMembers = buMembers;
+    p.members.crossBuMembers = crossBuMembers;
+    p.members.productOwner = productOwner;
+    p.members.techLead = techLead;
+    return { oldBu, oldCross };
   }
 
   function renderBasicEditBody(p) {
@@ -547,14 +585,16 @@
   }
 
   function savePeopleMembersOnly(p, data) {
-    const { oldMembers } = applyPeopleToProject(p, data);
-    if (oldMembers.join("、") !== p.members.buMembers.join("、")) {
+    const { oldBu, oldCross } = applyPeopleToProject(p, data);
+    const oldLabel = formatMembersLabel(oldBu, oldCross);
+    const newLabel = formatMembersLabel(p.members.buMembers, p.members.crossBuMembers);
+    if (oldLabel !== newLabel) {
       addActivity(p, {
         type: "member",
         operator: getRole().label.split("（")[0],
         time: new Date().toLocaleString("zh-CN", { hour12: false }),
-        summary: "更新本事业部项目成员",
-        changes: [{ field: "本事业部成员", old: oldMembers.join("、") || "—", new: p.members.buMembers.join("、") || "—" }],
+        summary: "更新项目成员",
+        changes: [{ field: "项目成员", old: oldLabel, new: newLabel }],
       });
     }
   }
@@ -582,7 +622,7 @@
       }
       window.IPMApproval.confirmAction({
         title: "确认保存",
-        message: "确定保存本事业部项目成员吗？",
+        message: "确定保存项目成员吗？",
         confirmText: "确认保存",
         onConfirm: () => {
           savePeopleMembersOnly(p, data);
