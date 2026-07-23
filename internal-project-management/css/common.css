@@ -1,385 +1,840 @@
-:root {
-  --primary: #1677ff;
-  --primary-hover: #4096ff;
-  --border: #e8e8e8;
-  --bg: #f5f6f8;
-  --text: #1f1f1f;
-  --text-secondary: #8c8c8c;
-  --status-online: #52c41a;
-  --status-dev: #1677ff;
-  --status-offline: #8c8c8c;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 14px;
-  color: var(--text);
-  background: var(--bg);
-  min-height: 100vh;
-}
-.btn {
-  height: 32px;
-  padding: 0 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  border: 1px solid var(--border);
-  background: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
-.btn-primary:hover { background: var(--primary-hover); }
-.btn:disabled { opacity: .45; cursor: not-allowed; }
-.btn-danger { color: #ff4d4f; border-color: #ffccc7; }
-.btn-danger:hover { background: #fff2f0; }
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 13px;
-}
-.status-badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; }
-.status-online { background: #f6ffed; color: #389e0d; border: 1px solid #b7eb8f; }
-.status-online::before { background: var(--status-online); }
-.status-dev { background: #e6f4ff; color: #0958d9; border: 1px solid #91caff; }
-.status-dev::before { background: var(--status-dev); }
-.status-offline { background: #f5f5f5; color: #595959; border: 1px solid #d9d9d9; }
-.status-offline::before { background: var(--status-offline); }
-.action-tag { font-size: 11px; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
-.tag-warn { background: #fff7e6; color: #d46b08; border: 1px solid #ffd591; }
-.tag-danger { background: #fff2f0; color: #cf1322; border: 1px solid #ffccc7; }
-.modal-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.45);
-  z-index: 1000;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  pointer-events: none;
-}
-.modal-overlay.show { display: flex; pointer-events: auto; }
-#modal.modal-overlay.show { z-index: 1100; }
-.confirm-modal.show { z-index: 1200; }
-.modal {
-  background: #fff;
-  border-radius: 8px;
-  width: 480px;
-  max-width: 100%;
-  max-height: 85vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 6px 24px rgba(0,0,0,.15);
-}
-.modal-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  font-weight: 600;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-}
-.modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #8c8c8c; }
-.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
-.modal-footer {
-  padding: 12px 20px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.modal-footer.hidden { display: none; }
-.modal-overlay.wide .modal { width: 560px; }
-.modal-overlay.large .modal { width: 640px; }
-.modal-body .form-field { margin-bottom: 14px; }
-.modal-body .form-field label { display: block; font-size: 13px; margin-bottom: 6px; font-weight: 500; }
-.modal-body .form-field input,
-.modal-body .form-field textarea,
-.modal-body .form-field select {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 13px;
-}
-.modal-body .form-field textarea { min-height: 80px; resize: vertical; }
-.field-hint { display: block; font-size: 12px; color: #8c8c8c; margin-bottom: 6px; }
-.form-section-title { font-size: 14px; font-weight: 600; margin: 0 0 12px; color: #262626; }
+/**
+ * 项目基础信息 / 人员编辑弹窗（列表页、详情页共用）
+ */
+(function () {
+  const { PEOPLE_POOL, BU_CODES, BU_LEADS, genProjectId, getPersonBu, getRole, addActivity } = window.IPM;
 
-/* 人员搜索选择器 */
-.people-picker { position: relative; }
-.people-picker-input {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 13px;
-}
-.people-picker-list {
-  display: none;
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  margin: 4px 0 0;
-  padding: 4px 0;
-  max-height: 200px;
-  overflow-y: auto;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,.1);
-  list-style: none;
-  z-index: 10;
-}
-.people-picker-list.open { display: block; }
-.people-picker-list li {
-  padding: 8px 12px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.people-picker-list li:hover,
-.people-picker-list li:focus { background: #e6f4ff; color: #0958d9; }
-.people-picker-list .people-picker-empty { color: #8c8c8c; cursor: default; }
-.people-picker-list .people-picker-empty:hover { background: transparent; color: #8c8c8c; }
-.people-picker-add { margin-top: 10px; }
+  function esc(s) {
+    if (s == null) return "";
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
 
-.member-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-height: 32px;
-  margin-bottom: 4px;
-}
-.member-chips-empty { font-size: 12px; color: #8c8c8c; }
-.member-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px 4px 10px;
-  background: #f0f5ff;
-  border: 1px solid #adc6ff;
-  border-radius: 4px;
-  font-size: 13px;
-}
-.member-chip-remove {
-  border: none;
-  background: none;
-  color: #8c8c8c;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  padding: 0 2px;
-}
-.member-chip-remove:hover { color: #ff4d4f; }
-.cross-members-readonly { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--border); }
-.cross-members-readonly .member-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.edit-form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 16px;
-}
-.edit-form-grid .form-field.full { grid-column: 1 / -1; }
-.bu-change-reason.hidden,
-.change-approval-reason.hidden { display: none; }
-@media (max-width: 560px) {
-  .edit-form-grid { grid-template-columns: 1fr; }
-}
+  function showToast(msg) {
+    const el = document.getElementById("toast");
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add("show");
+    setTimeout(() => el.classList.remove("show"), 2400);
+  }
 
-.cross-members-readonly .member-tag {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: #fff7e6;
-  border: 1px solid #ffd591;
-  color: #d46b08;
-}
-.toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0,0,0,.78);
-  color: #fff;
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-size: 13px;
-  z-index: 2000;
-  opacity: 0;
-  transition: opacity .2s;
-  pointer-events: none;
-}
-.toast.show { opacity: 1; }
+  function openModal(title, bodyHtml, footerHtml, sizeClass = "") {
+    const overlay = document.getElementById("modal");
+    if (!overlay) {
+      showToast("弹窗未就绪，请刷新页面");
+      return false;
+    }
+    document.getElementById("modalTitle").textContent = title;
+    document.getElementById("modalBody").innerHTML = bodyHtml;
+    const foot = document.getElementById("modalFooter");
+    foot.innerHTML = footerHtml || "";
+    foot.classList.toggle("hidden", !footerHtml);
+    overlay.className = "modal-overlay show" + (sizeClass ? " " + sizeClass : "");
+    return true;
+  }
 
-/* 审批流程状态 */
-.wf-status {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: inherit;
-}
-button.link.wf-status-btn { border: none; background: none; padding: 0; cursor: pointer; }
-button.link.wf-status-btn:hover .wf-status { opacity: 0.85; text-decoration: underline; }
-.wf-draft { background: #fff7e6; color: #d46b08; border: 1px solid #ffd591; }
-.wf-pending { background: #fff2f0; color: #cf1322; border: 1px solid #ffccc7; }
-.wf-reviewing { background: #e6f4ff; color: #0958d9; border: 1px solid #91caff; }
-.wf-done { background: #f6ffed; color: #389e0d; border: 1px solid #b7eb8f; }
-.wf-rejected { background: #f5f5f5; color: #595959; border: 1px solid #d9d9d9; }
-.wf-hint { font-size: 12px; color: #8c8c8c; margin-top: 4px; max-width: 280px; }
+  function closeModal() {
+    document.getElementById("modal")?.classList.remove("show");
+  }
 
-.wf-chart-title { font-weight: 600; margin-bottom: 8px; }
-.wf-chart-meta { font-size: 12px; color: #8c8c8c; display: flex; gap: 16px; margin-bottom: 20px; }
-.wf-steps {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 0;
-  padding: 8px 0 4px;
-  overflow-x: auto;
-}
-.wf-step {
-  flex: 1;
-  min-width: 140px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 0 20px;
-  position: relative;
-}
-.wf-step:not(:last-child)::after {
-  content: "";
-  position: absolute;
-  top: 14px;
-  left: calc(50% + 18px);
-  width: calc(100% - 36px);
-  height: 2px;
-  background: #e8e8e8;
-  z-index: 0;
-}
-.wf-step.done:not(:last-child)::after { background: #91caff; }
-.wf-step-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid #d9d9d9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  background: #fff;
-  flex-shrink: 0;
-  z-index: 1;
-  margin-bottom: 10px;
-}
-.wf-step.done .wf-step-icon { background: #1677ff; border-color: #1677ff; color: #fff; }
-.wf-step.active .wf-step-icon { border-color: #1677ff; color: #1677ff; box-shadow: 0 0 0 3px #e6f4ff; }
-.wf-step.rejected .wf-step-icon { border-color: #ff4d4f; color: #ff4d4f; }
-.wf-step-body { width: 100%; }
-.wf-step-label { font-weight: 500; font-size: 13px; }
-.wf-step-assignee { font-size: 12px; color: #8c8c8c; margin-top: 2px; }
-.wf-step-status { font-size: 12px; margin-top: 6px; }
-.wf-step-tag { font-size: 11px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; }
-.wf-step-tag.pending { background: #fff2f0; color: #cf1322; }
-.wf-step-tag.reviewing { background: #e6f4ff; color: #0958d9; }
-.wf-step-time { font-size: 11px; color: #bfbfbf; margin-top: 2px; }
-.wf-files { margin-top: 20px; padding-top: 16px; border-top: 1px solid #e8e8e8; }
-.wf-files-title { font-size: 13px; font-weight: 500; margin-bottom: 10px; }
-.wf-file-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: #fafafa;
-  border-radius: 6px;
-  margin-bottom: 6px;
-  font-size: 13px;
-}
-.wf-file-size { color: #8c8c8c; font-size: 12px; flex: 1; }
+  function bindModalClose() {
+    document.querySelectorAll("#modal [data-close]").forEach((b) => (b.onclick = closeModal));
+  }
 
-.confirm-modal .modal { width: 420px; }
-.confirm-modal .modal-body p { font-size: 14px; line-height: 1.6; }
-.flow-modal .modal { width: 560px; }
+  function initModalShell() {
+    const overlay = document.getElementById("modal");
+    if (!overlay || overlay.dataset.bound) return;
+    overlay.dataset.bound = "1";
+    document.getElementById("modalClose")?.addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => {
+      if (e.target.id === "modal") closeModal();
+    });
+  }
 
-/* 审批列表内嵌进度 */
-#panelApprove table th.col-progress,
-#panelApprove table td.col-progress {
-  min-width: 320px;
-  max-width: 480px;
-  white-space: normal;
-}
-.wf-inline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 0;
-  font-size: 12px;
-  line-height: 1.4;
-}
-.wf-inline-arrow {
-  display: inline-block;
-  width: 14px;
-  height: 1px;
-  background: #d9d9d9;
-  margin: 0 4px;
-  position: relative;
-  flex-shrink: 0;
-}
-.wf-inline-arrow::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: -3px;
-  border: 4px solid transparent;
-  border-left-color: #d9d9d9;
-}
-.wf-inline-step {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid #e8e8e8;
-  background: #fafafa;
-  min-width: 72px;
-  position: relative;
-}
-.wf-inline-step .wf-inline-label { font-weight: 500; color: #595959; font-size: 11px; }
-.wf-inline-step .wf-inline-sub { font-size: 10px; color: #8c8c8c; margin-top: 2px; max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wf-inline-step.done { background: #f6ffed; border-color: #b7eb8f; }
-.wf-inline-step.done .wf-inline-label { color: #389e0d; }
-.wf-inline-step.done::before { content: "✓"; position: absolute; top: -6px; right: -4px; font-size: 10px; color: #52c41a; background: #fff; border-radius: 50%; width: 14px; height: 14px; line-height: 14px; text-align: center; }
-.wf-inline-step.active { background: #e6f4ff; border-color: #91caff; box-shadow: 0 0 0 2px rgba(22,119,255,.12); }
-.wf-inline-step.active .wf-inline-label { color: #0958d9; }
-.wf-inline-step.wait { opacity: 0.75; }
-.wf-inline-step.rejected { background: #fff2f0; border-color: #ffccc7; }
-.wf-inline-step.rejected .wf-inline-label { color: #cf1322; }
-.wf-inline-tag {
-  font-style: normal;
-  font-size: 10px;
-  padding: 0 4px;
-  border-radius: 2px;
-  margin-top: 3px;
-  background: #fff7e6;
-  color: #d46b08;
-}
-.wf-inline-step.active .wf-inline-tag { background: #fff2f0; color: #cf1322; }
-.wf-inline-files {
-  flex: 1 1 100%;
-  margin-top: 6px;
-}
-.btn-view-file-inline {
-  font-size: 12px;
-  padding: 0;
-}
+  function renderPersonPicker(id, label, value, hint) {
+    return `
+      <div class="form-field people-picker-field">
+        <label for="${id}Input">${label}</label>
+        ${hint ? `<span class="field-hint">${hint}</span>` : ""}
+        <div class="people-picker" data-picker="${id}">
+          <input type="text" class="people-picker-input" id="${id}Input" value="${esc(value)}" placeholder="输入姓名搜索…" autocomplete="off" />
+          <input type="hidden" id="${id}Value" value="${esc(value)}" />
+          <ul class="people-picker-list" id="${id}List" role="listbox"></ul>
+        </div>
+      </div>`;
+  }
+
+  function filterPeoplePool(query, exclude) {
+    const q = (query || "").trim().toLowerCase();
+    const ex = new Set(exclude.filter(Boolean));
+    return PEOPLE_POOL.filter((n) => {
+      if (ex.has(n)) return false;
+      if (!q) return true;
+      return n.toLowerCase().includes(q);
+    });
+  }
+
+  function bindPersonPicker(id, excludeFn) {
+    const input = document.getElementById(`${id}Input`);
+    const hidden = document.getElementById(`${id}Value`);
+    const list = document.getElementById(`${id}List`);
+    if (!input || !hidden || !list) return;
+
+    const render = () => {
+      const exclude = excludeFn();
+      const items = filterPeoplePool(input.value, exclude).slice(0, 12);
+      if (!items.length) {
+        list.innerHTML = `<li class="people-picker-empty">无匹配人员</li>`;
+      } else {
+        list.innerHTML = items
+          .map((n) => `<li role="option" data-name="${esc(n)}" tabindex="-1">${esc(n)}</li>`)
+          .join("");
+      }
+      list.classList.add("open");
+    };
+
+    const pick = (name) => {
+      hidden.value = name;
+      input.value = name;
+      list.classList.remove("open");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+
+    input.addEventListener("focus", render);
+    input.addEventListener("input", render);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") list.classList.remove("open");
+      if (e.key === "Enter") {
+        const first = list.querySelector("li[data-name]");
+        if (first) {
+          e.preventDefault();
+          pick(first.dataset.name);
+        }
+      }
+    });
+    list.addEventListener("mousedown", (e) => {
+      const li = e.target.closest("li[data-name]");
+      if (li) {
+        e.preventDefault();
+        pick(li.dataset.name);
+      }
+    });
+    input.addEventListener("blur", () => {
+      setTimeout(() => list.classList.remove("open"), 120);
+    });
+  }
+
+  function collectUnifiedMembers(p) {
+    const m = p.members || {};
+    const list = [];
+    const seen = new Set();
+    (m.buMembers || []).forEach((name) => {
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      list.push({ name, bu: p.bu || getPersonBu(name) });
+    });
+    (m.crossBuMembers || []).forEach((x) => {
+      const name = typeof x === "string" ? x : x?.name;
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      list.push({ name, bu: (typeof x === "object" && x.bu) || getPersonBu(name) });
+    });
+    return list;
+  }
+
+  function renderPeopleEditBody(p) {
+    return `
+      <div class="people-edit-form">
+        <p class="form-section-title">项目负责人</p>
+        <div class="edit-form-grid" style="margin-bottom:16px">
+          ${renderPersonPicker("peProduct", "项目产品负责人", p.productOwner)}
+          ${renderPersonPicker("peTech", "项目技术负责人", p.techLead)}
+          <div class="form-field full change-approval-reason hidden" id="peChangeReasonWrap">
+            <label>变更说明 <span class="req">*</span></label>
+            <textarea id="peChangeReason" placeholder="变更产品/技术负责人时须填写说明"></textarea>
+          </div>
+        </div>
+        <p class="field-hint" style="margin-bottom:12px">变更<strong>产品/技术负责人</strong>须提交审批（与列表「编辑」逻辑一致）；项目成员可直接保存。保存后详情页仍按本事业部 / 跨事业部分开展示。</p>
+        <p class="form-section-title">项目成员</p>
+        <p class="field-hint" style="margin-bottom:8px">下方搜索姓名可添加成员（不区分事业部）；已添加成员点击 × 可移除</p>
+        <div class="member-chip-list" id="peMemberChips"></div>
+        <div class="people-picker people-picker-add" data-picker="peAdd">
+          <input type="text" class="people-picker-input" id="peAddInput" placeholder="搜索姓名添加成员…" autocomplete="off" />
+          <ul class="people-picker-list" id="peAddList" role="listbox"></ul>
+        </div>
+      </div>`;
+  }
+
+  function readPeopleEditOwners(p) {
+    const productOwner = document.getElementById("peProductValue")?.value.trim() || p.productOwner;
+    const techLead = document.getElementById("peTechValue")?.value.trim() || p.techLead;
+    const reason = document.getElementById("peChangeReason")?.value.trim() || "";
+    return {
+      productOwner,
+      techLead,
+      reason,
+      productChanged: productOwner !== p.productOwner,
+      techChanged: techLead !== p.techLead,
+      ownerChanged: productOwner !== p.productOwner || techLead !== p.techLead,
+    };
+  }
+
+  function bindPeopleEditOwners(p) {
+    if (hasActiveOwnerChange(p, "product")) {
+      document.getElementById("peProductInput")?.setAttribute("disabled", "disabled");
+    }
+    if (hasActiveOwnerChange(p, "tech")) {
+      document.getElementById("peTechInput")?.setAttribute("disabled", "disabled");
+    }
+    bindPersonPicker("peProduct", () => [document.getElementById("peTechValue")?.value]);
+    bindPersonPicker("peTech", () => [document.getElementById("peProductValue")?.value]);
+
+    const wrap = document.getElementById("peChangeReasonWrap");
+    const btnApproval = document.getElementById("peSubmitApproval");
+    const sync = () => {
+      const o = readPeopleEditOwners(p);
+      const need = o.productChanged || o.techChanged;
+      wrap?.classList.toggle("hidden", !need);
+      btnApproval?.classList.toggle("hidden", !need);
+    };
+    document.getElementById("peProductInput")?.addEventListener("input", sync);
+    document.getElementById("peTechInput")?.addEventListener("input", sync);
+    document.getElementById("peProductInput")?.addEventListener("change", sync);
+    document.getElementById("peTechInput")?.addEventListener("change", sync);
+    sync();
+  }
+
+  function bindPeopleEditForm(p) {
+    const chipsEl = document.getElementById("peMemberChips");
+    let members = collectUnifiedMembers(p);
+
+    const getOwners = () => {
+      const o = readPeopleEditOwners(p);
+      return [o.productOwner, o.techLead];
+    };
+
+    const memberNames = () => members.map((m) => m.name);
+
+    const renderChips = () => {
+      if (!members.length) {
+        chipsEl.innerHTML = '<span class="member-chips-empty">暂无成员，请下方搜索添加</span>';
+        return;
+      }
+      chipsEl.innerHTML = members
+        .map(
+          (m) =>
+            `<span class="member-chip">${esc(m.name)}<span class="member-chip-bu">${esc(m.bu)}</span><button type="button" class="member-chip-remove" data-name="${esc(m.name)}" aria-label="移除">×</button></span>`
+        )
+        .join("");
+      chipsEl.querySelectorAll(".member-chip-remove").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          members = members.filter((x) => x.name !== btn.dataset.name);
+          renderChips();
+        });
+      });
+    };
+
+    const addInput = document.getElementById("peAddInput");
+    const addList = document.getElementById("peAddList");
+
+    const renderAddList = () => {
+      const exclude = [...getOwners(), ...memberNames()];
+      const items = filterPeoplePool(addInput.value, exclude).slice(0, 12);
+      if (!items.length) {
+        addList.innerHTML = `<li class="people-picker-empty">无匹配人员</li>`;
+      } else {
+        addList.innerHTML = items
+          .map((n) => {
+            const bu = getPersonBu(n);
+            return `<li role="option" data-name="${esc(n)}" data-bu="${esc(bu)}">+ ${esc(n)}<span class="people-picker-bu">${esc(bu)}</span></li>`;
+          })
+          .join("");
+      }
+      addList.classList.add("open");
+    };
+
+    addInput.addEventListener("focus", renderAddList);
+    addInput.addEventListener("input", renderAddList);
+    addList.addEventListener("mousedown", (e) => {
+      const li = e.target.closest("li[data-name]");
+      if (!li) return;
+      e.preventDefault();
+      const name = li.dataset.name;
+      if (!memberNames().includes(name)) {
+        members.push({ name, bu: li.dataset.bu || getPersonBu(name) });
+        renderChips();
+      }
+      addInput.value = "";
+      addList.classList.remove("open");
+    });
+    addInput.addEventListener("blur", () => {
+      setTimeout(() => addList.classList.remove("open"), 120);
+    });
+
+    renderChips();
+    bindPeopleEditOwners(p);
+
+    return () => ({
+      members: members.map((m) => ({ name: m.name, bu: m.bu })),
+      ...readPeopleEditOwners(p),
+    });
+  }
+
+  function formatMembersLabel(buNames, crossList) {
+    const parts = [...(buNames || [])];
+    (crossList || []).forEach((x) => {
+      const name = typeof x === "string" ? x : x?.name;
+      const bu = typeof x === "object" ? x?.bu : "";
+      if (name) parts.push(bu ? `${name}（${bu}）` : name);
+    });
+    return parts.join("、") || "—";
+  }
+
+  function applyPeopleToProject(p, data) {
+    const oldBu = [...(p.members?.buMembers || [])];
+    const oldCross = [...(p.members?.crossBuMembers || [])];
+    const productOwner = data.productOwner ?? p.productOwner;
+    const techLead = data.techLead ?? p.techLead;
+    if (!p.members) {
+      p.members = { buLead: p.buLead, productOwner, techLead, buMembers: [], crossBuMembers: [] };
+    }
+    const buMembers = [];
+    const crossBuMembers = [];
+    const seen = new Set();
+    (data.members || []).forEach((m) => {
+      const name = typeof m === "string" ? m : m?.name;
+      if (!name || name === productOwner || name === techLead || seen.has(name)) return;
+      seen.add(name);
+      const bu = (typeof m === "object" && m.bu) || getPersonBu(name);
+      if (bu === p.bu) buMembers.push(name);
+      else crossBuMembers.push({ name, bu });
+    });
+    p.members.buMembers = buMembers;
+    p.members.crossBuMembers = crossBuMembers;
+    p.members.productOwner = productOwner;
+    p.members.techLead = techLead;
+    return { oldBu, oldCross };
+  }
+
+  function renderBasicEditBody(p) {
+    const buOpts = Object.keys(BU_CODES)
+      .map((b) => `<option value="${esc(b)}" ${b === p.bu ? "selected" : ""}>${esc(b)}</option>`)
+      .join("");
+    return `
+      <div class="edit-form-grid">
+        <div class="form-field"><label>项目名称</label><input id="editName" value="${esc(p.name)}" /></div>
+        <div class="form-field"><label>负责事业部</label><select id="editBu">${buOpts}</select></div>
+        <div class="form-field"><label>事业部负责人</label><input id="editBuLead" disabled value="${esc(p.buLead)}" /></div>
+        <div class="form-field"><label>立项年月</label><input id="editEstablish" type="month" value="${esc(p.establish)}" /></div>
+        <div class="form-field"><label>项目ID</label><input id="editProjectId" disabled value="${esc(p.projectId)}" /></div>
+        ${renderPersonPicker("editProduct", "项目产品负责人", p.productOwner)}
+        ${renderPersonPicker("editTech", "项目技术负责人", p.techLead)}
+        <div class="form-field full"><label>项目简介</label><textarea id="editDesc">${esc(p.desc || "")}</textarea></div>
+        <div class="form-field full change-approval-reason hidden" id="changeReasonWrap">
+          <label>变更说明 <span class="req">*</span></label>
+          <textarea id="changeReason" placeholder="变更事业部或负责人时须填写说明"></textarea>
+        </div>
+      </div>
+      <p class="field-hint">变更<strong>负责事业部、产品/技术负责人</strong>须提交审批；项目名称、立项年月、简介可直接保存。成员与负责人也可在「编辑人员」中维护（负责人变更同样须审批）。</p>`;
+  }
+
+  function readBasicEditForm(p) {
+    const bu = document.getElementById("editBu").value;
+    const productOwner = document.getElementById("editProductValue")?.value.trim() || p.productOwner;
+    const techLead = document.getElementById("editTechValue")?.value.trim() || p.techLead;
+    return {
+      name: document.getElementById("editName").value.trim() || p.name,
+      bu,
+      buLead: BU_LEADS[bu] || p.buLead,
+      establish: document.getElementById("editEstablish").value || p.establish,
+      desc: document.getElementById("editDesc").value.trim(),
+      productOwner,
+      techLead,
+      reason: document.getElementById("changeReason")?.value.trim() || "",
+      buChanged: bu !== p.bu,
+      productChanged: productOwner !== p.productOwner,
+      techChanged: techLead !== p.techLead,
+      ownerChanged: productOwner !== p.productOwner || techLead !== p.techLead,
+    };
+  }
+
+  function hasActiveBuChange(p) {
+    return (p.approvals || []).some((a) => a.type === "buChange" && (a.phase === "reviewing" || a.phase === "draft"));
+  }
+
+  function hasActiveOwnerChange(p, role) {
+    return (p.approvals || []).some(
+      (a) => a.type === "ownerChange" && a.payload?.role === role && (a.phase === "reviewing" || a.phase === "draft")
+    );
+  }
+
+  function bindBasicEditForm(p) {
+    const editBu = document.getElementById("editBu");
+    const editBuLead = document.getElementById("editBuLead");
+    const wrap = document.getElementById("changeReasonWrap");
+    const btnSubmit = document.getElementById("btnSubmitApproval");
+
+    if (hasActiveBuChange(p)) editBu.disabled = true;
+    if (hasActiveOwnerChange(p, "product")) {
+      document.getElementById("editProductInput")?.setAttribute("disabled", "disabled");
+    }
+    if (hasActiveOwnerChange(p, "tech")) {
+      document.getElementById("editTechInput")?.setAttribute("disabled", "disabled");
+    }
+
+    bindPersonPicker("editProduct", () => [document.getElementById("editTechValue")?.value]);
+    bindPersonPicker("editTech", () => [document.getElementById("editProductValue")?.value]);
+
+    const syncApprovalUi = () => {
+      const data = readBasicEditForm(p);
+      editBuLead.value = BU_LEADS[data.bu] || "—";
+      const needApproval =
+        (data.buChanged && !editBu.disabled) || data.productChanged || data.techChanged;
+      wrap?.classList.toggle("hidden", !needApproval);
+      btnSubmit?.classList.toggle("hidden", !needApproval);
+    };
+    editBu.addEventListener("change", syncApprovalUi);
+    document.getElementById("editProductInput")?.addEventListener("change", syncApprovalUi);
+    document.getElementById("editTechInput")?.addEventListener("change", syncApprovalUi);
+    document.getElementById("editProductInput")?.addEventListener("input", syncApprovalUi);
+    document.getElementById("editTechInput")?.addEventListener("input", syncApprovalUi);
+    syncApprovalUi();
+  }
+
+  function submitOwnerChangeApproval(p, role, to, reason) {
+    const label = role === "product" ? "项目产品负责人" : "项目技术负责人";
+    const current = role === "product" ? p.productOwner : p.techLead;
+    if (to === current) return null;
+    const ap = {
+      id: `ap-${p.id}-owner-${role}-${Date.now()}`,
+      type: "ownerChange",
+      typeLabel: `${label}变更`,
+      phase: "reviewing",
+      submitted: true,
+      submitter: p.productOwner,
+      submittedAt: new Date().toLocaleString("zh-CN", { hour12: false }),
+      formData: { reason },
+      missingFields: [],
+      attachments: [{ name: "负责人变更说明.docx", size: "128KB" }],
+      steps: [
+        { key: "buLead", label: "事业部负责人", assignee: p.buLead, status: "active" },
+        { key: "executive", label: "超级管理层", assignee: "轮值VP", status: "waiting" },
+      ],
+      currentStepIndex: 0,
+      payload: { role, roleLabel: label, from: current, to, reason },
+    };
+    p.approvals = (p.approvals || []).filter(
+      (a) => !(a.type === "ownerChange" && a.payload?.role === role && (a.phase === "reviewing" || a.phase === "draft"))
+    );
+    p.approvals.push(ap);
+    window.IPMApproval.submitApproval(p, ap);
+    window.IPMApproval.syncLegacyFromApprovals(p);
+    addActivity(p, {
+      type: "approval",
+      operator: getRole().label.split("（")[0],
+      time: ap.submittedAt,
+      summary: `${label}变更申请`,
+      changes: [{ field: label, old: current, new: to + "（待审批）" }],
+    });
+    return ap;
+  }
+
+  function saveBasicFieldsDirect(p, data) {
+    const changes = [];
+    const old = { name: p.name, establish: p.establish, desc: p.desc || "" };
+    p.name = data.name;
+    p.establish = data.establish;
+    p.desc = data.desc;
+    if (p.pendingInfo && p.desc) p.pendingInfo = false;
+    const newPid = genProjectId(p);
+    if (newPid !== p.projectId) {
+      changes.push({ field: "项目ID", old: p.projectId, new: newPid });
+      p.projectId = newPid;
+    }
+    if (old.name !== p.name) changes.push({ field: "项目名称", old: old.name, new: p.name });
+    if (old.establish !== p.establish) changes.push({ field: "立项年月", old: old.establish, new: p.establish });
+    if (old.desc !== p.desc) changes.push({ field: "项目简介", old: old.desc || "—", new: p.desc || "—" });
+    if (changes.length) {
+      addActivity(p, {
+        type: "sync",
+        operator: getRole().label.split("（")[0],
+        time: new Date().toLocaleString("zh-CN", { hour12: false }),
+        summary: "更新基础信息",
+        changes,
+      });
+    }
+    return changes.length > 0;
+  }
+
+  function submitBuChangeApproval(p, data) {
+    if (!data.reason) {
+      showToast("请填写变更说明");
+      return null;
+    }
+    const ap = {
+      id: `ap-${p.id}-bu-${Date.now()}`,
+      type: "buChange",
+      typeLabel: "事业部变更",
+      phase: "reviewing",
+      submitted: true,
+      submitter: p.productOwner,
+      submittedAt: new Date().toLocaleString("zh-CN", { hour12: false }),
+      formData: { reason: data.reason },
+      missingFields: [],
+      attachments: [{ name: "事业部变更说明.docx", size: "96KB" }],
+      steps: [
+        { key: "buLead", label: "事业部负责人", assignee: BU_LEADS[data.bu] || p.buLead, status: "active" },
+        { key: "executive", label: "超级管理层", assignee: "轮值VP", status: "waiting" },
+      ],
+      currentStepIndex: 0,
+      payload: {
+        fromBu: p.bu,
+        toBu: data.bu,
+        fromLead: p.buLead,
+        toBuLead: data.buLead,
+        name: data.name,
+        desc: data.desc,
+        establish: data.establish,
+      },
+    };
+    p.approvals = (p.approvals || []).filter((a) => a.type !== "buChange" || a.phase === "approved" || a.phase === "rejected");
+    p.approvals.push(ap);
+    window.IPMApproval.submitApproval(p, ap);
+    addActivity(p, {
+      type: "approval",
+      operator: getRole().label.split("（")[0],
+      time: ap.submittedAt,
+      summary: "事业部变更申请",
+      changes: [
+        { field: "负责事业部", old: p.bu, new: data.bu + "（待审批）" },
+        { field: "项目名称", old: p.name, new: data.name },
+      ],
+    });
+    return ap;
+  }
+
+  function openEditBasicModal(p, onSaved) {
+    initModalShell();
+    if (
+      !openModal(
+        "编辑基础信息",
+        renderBasicEditBody(p),
+        `<button type="button" class="btn" data-close>取消</button>
+         <button type="button" class="btn" id="saveBasic">保存</button>
+         <button type="button" class="btn btn-primary hidden" id="btnSubmitApproval">提交审批</button>`,
+        "large"
+      )
+    )
+      return;
+    bindBasicEditForm(p);
+
+    document.getElementById("saveBasic").onclick = () => {
+      const data = readBasicEditForm(p);
+      if (data.buChanged || data.ownerChanged) {
+        showToast("事业部或负责人已变更，请填写说明后点击「提交审批」");
+        return;
+      }
+      window.IPMApproval.confirmAction({
+        title: "确认保存",
+        message: "确定保存基础信息修改吗？",
+        confirmText: "确认保存",
+        onConfirm: () => {
+          saveBasicFieldsDirect(p, data);
+          closeModal();
+          showToast("基础信息已保存");
+          onSaved?.();
+        },
+      });
+    };
+
+    document.getElementById("btnSubmitApproval").onclick = () => {
+      const data = readBasicEditForm(p);
+      if (!data.buChanged && !data.ownerChanged) {
+        showToast("未变更事业部或负责人，无需提交审批");
+        return;
+      }
+      if (!data.reason) {
+        showToast("请填写变更说明");
+        return;
+      }
+      let msg = "确定提交以下变更审批吗？";
+      if (data.buChanged) msg += `<p>负责事业部：<strong>${esc(p.bu)}</strong> → <strong>${esc(data.bu)}</strong></p>`;
+      if (data.productChanged) msg += `<p>产品负责人：<strong>${esc(p.productOwner)}</strong> → <strong>${esc(data.productOwner)}</strong></p>`;
+      if (data.techChanged) msg += `<p>技术负责人：<strong>${esc(p.techLead)}</strong> → <strong>${esc(data.techLead)}</strong></p>`;
+      window.IPMApproval.confirmAction({
+        title: "确认提交审批",
+        message: msg,
+        confirmText: "确认提交",
+        onConfirm: () => {
+          if (data.buChanged) submitBuChangeApproval(p, data);
+          if (data.productChanged) submitOwnerChangeApproval(p, "product", data.productOwner, data.reason);
+          if (data.techChanged) submitOwnerChangeApproval(p, "tech", data.techLead, data.reason);
+          if (data.name !== p.name || data.desc !== (p.desc || "") || data.establish !== p.establish) {
+            saveBasicFieldsDirect(p, { ...data, bu: p.bu, buLead: p.buLead, buChanged: false });
+          }
+          closeModal();
+          showToast("已提交审批");
+          onSaved?.();
+        },
+      });
+    };
+    bindModalClose();
+  }
+
+  function savePeopleMembersOnly(p, data) {
+    const { oldBu, oldCross } = applyPeopleToProject(p, data);
+    const oldLabel = formatMembersLabel(oldBu, oldCross);
+    const newLabel = formatMembersLabel(p.members.buMembers, p.members.crossBuMembers);
+    if (oldLabel !== newLabel) {
+      addActivity(p, {
+        type: "member",
+        operator: getRole().label.split("（")[0],
+        time: new Date().toLocaleString("zh-CN", { hour12: false }),
+        summary: "更新项目成员",
+        changes: [{ field: "项目成员", old: oldLabel, new: newLabel }],
+      });
+    }
+  }
+
+  function openPeopleEditModal(p, onSaved) {
+    initModalShell();
+    if (
+      !openModal(
+        "编辑人员",
+        renderPeopleEditBody(p),
+        `<button type="button" class="btn" data-close>取消</button>
+         <button type="button" class="btn" id="savePeople">保存</button>
+         <button type="button" class="btn btn-primary hidden" id="peSubmitApproval">提交审批</button>`,
+        "large"
+      )
+    )
+      return;
+    const readForm = bindPeopleEditForm(p);
+
+    document.getElementById("savePeople").onclick = () => {
+      const data = readForm();
+      if (data.ownerChanged) {
+        showToast("负责人已变更，请填写说明后点击「提交审批」");
+        return;
+      }
+      window.IPMApproval.confirmAction({
+        title: "确认保存",
+        message: "确定保存项目成员吗？",
+        confirmText: "确认保存",
+        onConfirm: () => {
+          savePeopleMembersOnly(p, data);
+          closeModal();
+          showToast("成员已保存");
+          onSaved?.();
+        },
+      });
+    };
+
+    document.getElementById("peSubmitApproval").onclick = () => {
+      const data = readForm();
+      if (!data.ownerChanged) {
+        showToast("未变更负责人，无需提交审批");
+        return;
+      }
+      if (!data.reason) {
+        showToast("请填写变更说明");
+        return;
+      }
+      let msg = "确定提交以下负责人变更审批吗？";
+      if (data.productChanged) {
+        msg += `<p>产品负责人：<strong>${esc(p.productOwner)}</strong> → <strong>${esc(data.productOwner)}</strong></p>`;
+      }
+      if (data.techChanged) {
+        msg += `<p>技术负责人：<strong>${esc(p.techLead)}</strong> → <strong>${esc(data.techLead)}</strong></p>`;
+      }
+      window.IPMApproval.confirmAction({
+        title: "确认提交审批",
+        message: msg,
+        confirmText: "确认提交",
+        onConfirm: () => {
+          if (data.productChanged) submitOwnerChangeApproval(p, "product", data.productOwner, data.reason);
+          if (data.techChanged) submitOwnerChangeApproval(p, "tech", data.techLead, data.reason);
+          savePeopleMembersOnly(p, data);
+          closeModal();
+          showToast("已提交审批");
+          onSaved?.();
+        },
+      });
+    };
+    bindModalClose();
+  }
+
+  function renderApplyFormBody(p) {
+    const buOpts = Object.keys(BU_CODES)
+      .map((b) => `<option value="${esc(b)}" ${p && p.bu === b ? "selected" : ""}>${esc(b)}</option>`)
+      .join("");
+    const bu = p?.bu || Object.keys(BU_CODES)[0];
+    const buLead = p?.buLead || BU_LEADS[bu] || "";
+    return `
+      <div class="edit-form-grid">
+        <div class="form-field"><label>项目名称 <span class="req">*</span></label>
+          <input id="applyName" value="${esc(p?.name || "")}" placeholder="产品/项目名称" /></div>
+        <div class="form-field"><label>负责事业部 <span class="req">*</span></label>
+          <select id="applyBu">${buOpts}</select></div>
+        <div class="form-field"><label>事业部负责人</label>
+          <input id="applyBuLead" disabled value="${esc(buLead)}" /></div>
+        <div class="form-field"><label>立项年月 <span class="req">*</span></label>
+          <input id="applyEstablish" type="month" value="${esc(p?.establish || "")}" /></div>
+        ${renderPersonPicker("applyProduct", "项目产品负责人", p?.productOwner || "")}
+        ${renderPersonPicker("applyTech", "项目技术负责人", p?.techLead || "")}
+        <div class="form-field full"><label>项目简介</label>
+          <textarea id="applyDesc" placeholder="简要描述项目目标与范围">${esc(p?.desc || "")}</textarea></div>
+      </div>
+      <p class="field-hint">可先「仅保存」草稿，补全简介后「提交申请」进入立项审批流程；审批通过后生成项目ID并进入项目管理列表。</p>`;
+  }
+
+  function readApplyForm(p) {
+    const bu = document.getElementById("applyBu").value;
+    return {
+      name: document.getElementById("applyName").value.trim(),
+      bu,
+      buLead: BU_LEADS[bu] || "",
+      establish: document.getElementById("applyEstablish").value,
+      productOwner: document.getElementById("applyProductValue").value.trim(),
+      techLead: document.getElementById("applyTechValue").value.trim(),
+      desc: document.getElementById("applyDesc").value.trim(),
+    };
+  }
+
+  function bindApplyForm(p) {
+    const applyBu = document.getElementById("applyBu");
+    const applyBuLead = document.getElementById("applyBuLead");
+    applyBu.addEventListener("change", () => {
+      applyBuLead.value = BU_LEADS[applyBu.value] || "—";
+    });
+    bindPersonPicker("applyProduct", () => [document.getElementById("applyTechValue")?.value]);
+    bindPersonPicker("applyTech", () => [document.getElementById("applyProductValue")?.value]);
+  }
+
+  function upsertApplyProject(existing, data, asDraft) {
+    let proj = existing;
+    if (!proj) {
+      const newId = Math.max(0, ...window.IPM.PROJECTS.map((x) => x.id)) + 1;
+      proj = {
+        id: newId,
+        applyStatus: asDraft ? "draft" : "reviewing",
+        status: "开发中",
+        online: "-",
+        offline: "-",
+        pendingInfo: !data.desc,
+        pendingApproval: false,
+        createdAt: new Date().toLocaleString("zh-CN", { hour12: false }),
+        attachments: [],
+        activities: [],
+      };
+      window.IPM.PROJECTS.push(proj);
+    }
+    Object.assign(proj, data);
+    proj.applyStatus = asDraft ? "draft" : "reviewing";
+    proj.pendingInfo = !data.desc?.trim();
+    proj.projectId = genProjectId(proj);
+    proj.members = {
+      buLead: proj.buLead,
+      productOwner: proj.productOwner,
+      techLead: proj.techLead,
+      buMembers: proj.members?.buMembers || [],
+      crossBuMembers: [],
+    };
+    proj.timeline = proj.timeline || [
+      { key: "establish", label: "立项", date: (proj.establish || "") + "-01", done: false, desc: asDraft ? "草稿" : "待审批" },
+      { key: "dev", label: "开发", date: "-", done: false, desc: "—" },
+      { key: "online", label: "上线", date: "-", done: false, desc: "—" },
+      { key: "offline", label: "下线", date: "-", done: false, desc: "—" },
+    ];
+    proj.approvals = [window.IPM.buildEstablishApproval(proj)];
+    const ap = proj.approvals[0];
+    ap.formData = { reason: data.desc };
+    ap.missingFields = !data.desc?.trim() ? ["项目简介"] : [];
+    if (!asDraft) {
+      window.IPMApproval.submitApproval(proj, ap);
+      addActivity(proj, {
+        type: "create",
+        operator: getRole().label.split("（")[0],
+        time: ap.submittedAt,
+        summary: "提交内部项目立项申请",
+        changes: [{ field: "项目名称", old: "—", new: proj.name }],
+      });
+    } else {
+      ap.phase = "draft";
+      ap.submitted = false;
+      proj.applyStatus = "draft";
+    }
+    return proj;
+  }
+
+  function openApplyFormModal(p, onSaved) {
+    initModalShell();
+    if (
+      !openModal(
+        p ? "编辑立项申请" : "新建立项申请",
+        renderApplyFormBody(p),
+        `<button type="button" class="btn" data-close>取消</button>
+         <button type="button" class="btn" id="saveApplyDraft">仅保存</button>
+         <button type="button" class="btn btn-primary" id="submitApply">提交申请</button>`,
+        "large"
+      )
+    )
+      return;
+    bindApplyForm(p);
+
+    document.getElementById("saveApplyDraft").onclick = () => {
+      const data = readApplyForm(p);
+      if (!data.name || !data.bu || !data.establish || !data.productOwner || !data.techLead) {
+        showToast("请填写必填项");
+        return;
+      }
+      upsertApplyProject(p, data, true);
+      closeModal();
+      showToast("已保存草稿");
+      onSaved?.();
+    };
+
+    document.getElementById("submitApply").onclick = () => {
+      const data = readApplyForm(p);
+      if (!data.name || !data.bu || !data.establish || !data.productOwner || !data.techLead) {
+        showToast("请填写必填项");
+        return;
+      }
+      if (!data.desc) {
+        showToast("请填写项目简介");
+        return;
+      }
+      window.IPMApproval.confirmAction({
+        title: "确认提交申请",
+        message: "确定提交内部项目立项申请吗？提交后将进入审批流程。",
+        confirmText: "确认提交",
+        onConfirm: () => {
+          const proj = upsertApplyProject(p, data, false);
+          closeModal();
+          showToast("立项申请已提交");
+          onSaved?.();
+        },
+      });
+    };
+    bindModalClose();
+  }
+
+  window.IPMEdit = {
+    esc,
+    showToast,
+    openModal,
+    closeModal,
+    bindModalClose,
+    openEditBasicModal,
+    openPeopleEditModal,
+    openApplyFormModal,
+    initModalShell,
+    renderPersonPicker,
+    bindPersonPicker,
+  };
+
+  document.addEventListener("DOMContentLoaded", initModalShell);
+})(window);
