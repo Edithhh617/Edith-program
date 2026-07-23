@@ -1,840 +1,568 @@
-/**
- * 项目基础信息 / 人员编辑弹窗（列表页、详情页共用）
- */
-(function () {
-  const { PEOPLE_POOL, BU_CODES, BU_LEADS, genProjectId, getPersonBu, getRole, addActivity } = window.IPM;
+/** 内部项目管理原型 — 共享数据与权限 */
+(function (global) {
+  const BU_CODES = {
+    云能力: "YN",
+    智能校对: "ZJ",
+    综合项目部: "ZH",
+    智能检索: "ZN",
+  };
 
-  function esc(s) {
-    if (s == null) return "";
-    return String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+  const BU_LEADS = {
+    云能力: "李明",
+    智能校对: "陈华",
+    综合项目部: "周强",
+    智能检索: "吴敏",
+  };
+
+  const ROLES = {
+    superAdmin: {
+      id: "superAdmin",
+      label: "超级管理员（查看/编辑全部）",
+      view: () => true,
+      edit: () => true,
+      approve: (p) => !!p?.pendingApproval || !!p?.pendingOwnerChange || !!p?.statusApproval,
+      manageMembers: () => true,
+      changeStatus: () => true,
+    },
+    executive: {
+      id: "executive",
+      label: "超级管理层（CEO / 轮值VP）",
+      view: () => true,
+      edit: () => false,
+      approve: (p) => !!(p?.pendingApproval || p?.statusApproval),
+      manageMembers: () => false,
+      changeStatus: () => false,
+    },
+    productOwner: {
+      id: "productOwner",
+      label: "项目产品负责人（张三）",
+      view: (p) => p?.productOwner === "张三",
+      edit: (p) => p?.productOwner === "张三",
+      approve: (p) =>
+        (p?.pendingApproval && p?.productOwner === "张三") ||
+        (p?.pendingOwnerChange && p?.productOwner === "张三"),
+      manageMembers: (p) => p?.productOwner === "张三",
+      changeStatus: (p) => p?.productOwner === "张三" && p?.status === "开发中",
+    },
+  };
+
+  const STATUS_ORDER = { 开发中: 0, 上线: 1, 下线: 2 };
+
+  const PEOPLE_POOL = [
+    "张三", "李四", "王五", "赵六", "钱七", "孙八", "周九", "吴敏", "郑伟", "林十一",
+    "秦二", "尤十九", "许二十", "张二四", "孔二五", "韩十五", "杨十六",
+    "陈华", "周强", "刘协作", "陈支援", "赵外援", "华二八", "金二九",
+  ];
+
+  /** 人员所属事业部（原型主数据；保存成员时按此拆分本事业部 / 跨事业部展示） */
+  const PEOPLE_BU = {
+    张三: "智能校对",
+    李四: "智能校对",
+    王五: "云能力",
+    赵六: "云能力",
+    钱七: "综合项目部",
+    孙八: "综合项目部",
+    周九: "智能检索",
+    吴敏: "智能检索",
+    郑伟: "综合项目部",
+    林十一: "智能检索",
+    秦二: "智能检索",
+    尤十九: "智能检索",
+    许二十: "智能检索",
+    张二四: "综合项目部",
+    孔二五: "综合项目部",
+    韩十五: "综合项目部",
+    杨十六: "综合项目部",
+    陈华: "智能校对",
+    周强: "综合项目部",
+    刘协作: "智能校对",
+    陈支援: "云能力",
+    赵外援: "综合项目部",
+    华二八: "综合项目部",
+    金二九: "综合项目部",
+    李明: "云能力",
+  };
+
+  function getPersonBu(name) {
+    return PEOPLE_BU[name] || Object.keys(BU_CODES)[0];
   }
 
-  function showToast(msg) {
-    const el = document.getElementById("toast");
-    if (!el) return;
-    el.textContent = msg;
-    el.classList.add("show");
-    setTimeout(() => el.classList.remove("show"), 2400);
+  function genProjectId(p) {
+    const code = BU_CODES[p.bu] || "XX";
+    const ym = p.establish.replace("-", "");
+    const seq = String(p.id).padStart(3, "0");
+    return `${code}-${ym}-${seq}`;
   }
 
-  function openModal(title, bodyHtml, footerHtml, sizeClass = "") {
-    const overlay = document.getElementById("modal");
-    if (!overlay) {
-      showToast("弹窗未就绪，请刷新页面");
-      return false;
+  function buildMembers(p) {
+    const buMembers = PEOPLE_POOL.filter((n) => n !== p.productOwner && n !== p.techLead).slice(0, 3 + (p.id % 3));
+    const crossBuMembers = p.id % 3 === 0
+      ? [{ name: "刘协作", bu: "智能校对" }, { name: "陈支援", bu: "云能力" }]
+      : p.id % 3 === 1
+        ? [{ name: "赵外援", bu: "综合项目部" }]
+        : [];
+    return {
+      buLead: p.buLead,
+      productOwner: p.productOwner,
+      techLead: p.techLead,
+      buMembers,
+      crossBuMembers,
+    };
+  }
+
+  function resolveInitiateTime(p) {
+    if (p.initiateTime) return p.initiateTime;
+    if (p.initiateDate) return p.initiateDate.length === 7 ? `${p.initiateDate}-01` : p.initiateDate;
+    if (p.establish) return `${p.establish}-01`;
+    return "-";
+  }
+
+  function resolveTerminateTime(p) {
+    if (p.terminateTime) return p.terminateTime;
+    if (p.status === "下线" && p.offline && p.offline !== "-") return p.offline;
+    return "-";
+  }
+
+  function buildTimeline(p) {
+    const [y, m] = p.establish.split("-");
+    const establishDate = `${y}-${m}-01`;
+    return [
+      { key: "establish", label: "立项", date: establishDate, done: true, desc: "预立项审批通过" },
+      { key: "dev", label: "开发", date: p.status !== "开发中" || p.online !== "-" ? `${y}-${String(Number(m) + 1).padStart(2, "0")}-15` : "-", done: p.status !== "开发中" || p.online !== "-", desc: "进入开发阶段" },
+      { key: "online", label: "上线", date: p.online, done: p.status === "上线" || p.status === "下线", desc: p.online !== "-" ? "正式上线" : "待上线" },
+      { key: "offline", label: "下线", date: p.offline, done: p.status === "下线", desc: p.status === "下线" ? "已下线" : "—" },
+    ];
+  }
+
+  function seedActivities(p) {
+    const base = [
+      {
+        id: `${p.id}-a1`,
+        type: "create",
+        operator: p.buLead,
+        time: `${p.establish.replace("-", "/")}/01 10:00`,
+        summary: "项目立项创建",
+        changes: [],
+      },
+      {
+        id: `${p.id}-a2`,
+        type: "sync",
+        operator: "系统",
+        time: `${p.establish.replace("-", "/")}/05 02:00`,
+        summary: "主数据同步：事业部、负责人",
+        changes: [
+          { field: "负责事业部", old: "—", new: p.bu },
+          { field: "事业部负责人", old: "—", new: p.buLead },
+        ],
+      },
+    ];
+    if (p.online !== "-") {
+      base.push({
+        id: `${p.id}-a3`,
+        type: "status",
+        operator: p.productOwner,
+        time: p.online + " 09:30",
+        summary: "状态变更：开发中 → 上线",
+        changes: [{ field: "状态", old: "开发中", new: "上线" }, { field: "上线时间", old: "-", new: p.online }],
+      });
     }
-    document.getElementById("modalTitle").textContent = title;
-    document.getElementById("modalBody").innerHTML = bodyHtml;
-    const foot = document.getElementById("modalFooter");
-    foot.innerHTML = footerHtml || "";
-    foot.classList.toggle("hidden", !footerHtml);
-    overlay.className = "modal-overlay show" + (sizeClass ? " " + sizeClass : "");
-    return true;
+    if (p.pendingOwnerChange) {
+      base.push({
+        id: `${p.id}-a4`,
+        type: "approval",
+        operator: p.productOwner,
+        time: "2025-05-28 14:20",
+        summary: `负责人变更申请：${p.pendingOwnerChange.roleLabel}`,
+        changes: [
+          { field: p.pendingOwnerChange.roleLabel, old: p.pendingOwnerChange.from, new: p.pendingOwnerChange.to + "（待审批）" },
+        ],
+      });
+    }
+    if (p.statusApproval) {
+      base.push({
+        id: `${p.id}-a5`,
+        type: "approval",
+        operator: p.productOwner,
+        time: p.statusApproval.applyTime,
+        summary: `状态申请：${p.statusApproval.typeLabel}`,
+        changes: [{ field: "目标状态", old: p.status, new: p.statusApproval.targetStatus }],
+      });
+    }
+    return base;
   }
 
-  function closeModal() {
-    document.getElementById("modal")?.classList.remove("show");
-  }
+  const RAW = [
+    { id: 1, bu: "云能力", buLead: "李明", name: "雾信通", establish: "2024-06", status: "上线", online: "2024-06-01", offline: "-", productOwner: "王五", techLead: "赵六", desc: "企业级雾计算通信平台", pendingInfo: false, pendingApproval: false },
+    { id: 2, bu: "智能校对", buLead: "陈华", name: "综测通", establish: "2024-03", status: "开发中", online: "-", offline: "-", productOwner: "张三", techLead: "李四", desc: "综合测试与校对工具链", pendingInfo: true, pendingApproval: false },
+    { id: 3, bu: "综合项目部", buLead: "周强", name: "统一门户", establish: "2023-11", status: "上线", online: "2024-01-15", offline: "-", productOwner: "钱七", techLead: "孙八", desc: "集团统一门户入口", pendingInfo: false, pendingApproval: true, approvalType: "delete" },
+    { id: 4, bu: "智能检索", buLead: "吴敏", name: "智析平台", establish: "2024-08", status: "开发中", online: "-", offline: "-", productOwner: "张三", techLead: "周九", desc: "智能检索与分析中台", pendingInfo: false, pendingApproval: false, pendingOwnerChange: { role: "product", roleLabel: "项目产品负责人", from: "张三", to: "林十一" } },
+    { id: 5, bu: "综合项目部", buLead: "郑伟", name: "旧版工单", establish: "2022-05", status: "下线", online: "2022-08-01", offline: "2025-03-01", productOwner: "冯十", techLead: "褚十一", desc: "历史工单系统（已迁移）", pendingInfo: false, pendingApproval: false },
+    { id: 6, bu: "云能力", buLead: "李明", name: "云监控", establish: "2025-01", status: "开发中", online: "-", offline: "-", productOwner: "王五", techLead: "卫十二", desc: "云资源监控告警", pendingInfo: false, pendingApproval: false },
+    { id: 7, bu: "智能校对", buLead: "陈华", name: "语料库", establish: "2023-07", status: "下线", online: "2023-09-01", offline: "2024-12-01", productOwner: "蒋十三", techLead: "沈十四", desc: "语料管理与标注", pendingInfo: false, pendingApproval: false },
+    { id: 8, bu: "综合项目部", buLead: "周强", name: "审批中心", establish: "2024-11", status: "上线", online: "2025-02-01", offline: "-", productOwner: "韩十五", techLead: "杨十六", desc: "统一审批流引擎", pendingInfo: true, pendingApproval: true, approvalType: "ownerChange", pendingOwnerChange: { role: "tech", roleLabel: "项目技术负责人", from: "杨十六", to: "秦二" } },
+    { id: 9, bu: "智能检索", buLead: "吴敏", name: "标签引擎", establish: "2024-04", status: "上线", online: "2024-07-20", offline: "-", productOwner: "朱十七", techLead: "秦十八", desc: "标签体系与画像", pendingInfo: false, pendingApproval: false },
+    { id: 10, bu: "智能检索", buLead: "郑伟", name: "API网关", establish: "2024-09", status: "开发中", online: "-", offline: "-", productOwner: "尤十九", techLead: "许二十", desc: "内部 API 统一网关", pendingInfo: false, pendingApproval: false, statusApproval: { type: "online", typeLabel: "上线申请", targetStatus: "上线", applyTime: "2025-05-30 11:00", reason: "完成联调，申请上线" } },
+    { id: 11, bu: "云能力", buLead: "李明", name: "资源编排", establish: "2023-02", status: "下线", online: "2023-05-01", offline: "2024-08-01", productOwner: "何二一", techLead: "吕二二", desc: "资源编排（已下线）", pendingInfo: false, pendingApproval: true, approvalType: "delete" },
+    { id: 12, bu: "智能校对", buLead: "陈华", name: "OCR增强", establish: "2025-03", status: "开发中", online: "-", offline: "-", productOwner: "张三", techLead: "施二三", desc: "OCR 识别增强模块", pendingInfo: false, pendingApproval: false },
+    { id: 13, bu: "综合项目部", buLead: "周强", name: "消息总线", establish: "2024-02", status: "上线", online: "2024-05-10", offline: "-", productOwner: "张二四", techLead: "孔二五", desc: "消息中间件总线", pendingInfo: false, pendingApproval: false },
+    { id: 14, bu: "智能检索", buLead: "吴敏", name: "报表中心", establish: "2022-11", status: "下线", online: "2023-01-01", offline: "2025-01-01", productOwner: "曹二六", techLead: "严二七", desc: "报表中心（已下线）", pendingInfo: false, pendingApproval: false },
+    { id: 15, bu: "综合项目部", buLead: "郑伟", name: "配置中心", establish: "2024-10", status: "上线", online: "2025-01-08", offline: "-", productOwner: "华二八", techLead: "金二九", desc: "配置管理中心", pendingInfo: false, pendingApproval: false },
+    {
+      id: 16,
+      applyStatus: "draft",
+      bu: "云能力",
+      buLead: "李明",
+      name: "边缘计算试点",
+      establish: "2025-06",
+      status: "开发中",
+      online: "-",
+      offline: "-",
+      productOwner: "张三",
+      techLead: "王五",
+      desc: "",
+      applyReason: "边缘节点资源调度与离线自治能力验证",
+      scopeType: "内部",
+      preProjectId: "",
+      initiateDate: "2025-06",
+      applyFiles: { application: "", approval: "", supplement: "" },
+      pendingInfo: true,
+      pendingApproval: false,
+      createdAt: "2025-05-31 10:00",
+    },
+    {
+      id: 17,
+      applyStatus: "reviewing",
+      bu: "智能检索",
+      buLead: "吴敏",
+      name: "知识库二期",
+      establish: "2025-05",
+      status: "开发中",
+      online: "-",
+      offline: "-",
+      productOwner: "尤十九",
+      techLead: "许二十",
+      desc: "企业知识库二期建设",
+      applyReason: "统一检索与知识运营二期建设",
+      scopeType: "内部",
+      initiateDate: "2025-05",
+      applyFiles: { application: "知识库二期立项申请.pdf", approval: "事业部立项纪要.pdf", supplement: "" },
+      pendingInfo: false,
+      pendingApproval: false,
+      createdAt: "2025-05-28 09:30",
+    },
+  ];
 
-  function bindModalClose() {
-    document.querySelectorAll("#modal [data-close]").forEach((b) => (b.onclick = closeModal));
-  }
-
-  function initModalShell() {
-    const overlay = document.getElementById("modal");
-    if (!overlay || overlay.dataset.bound) return;
-    overlay.dataset.bound = "1";
-    document.getElementById("modalClose")?.addEventListener("click", closeModal);
-    overlay.addEventListener("click", (e) => {
-      if (e.target.id === "modal") closeModal();
+  function defaultSteps(p, startAt = 0) {
+    const steps = [
+      { key: "buLead", label: "事业部负责人", assignee: p.buLead, status: "waiting" },
+      { key: "executive", label: "超级管理层", assignee: "轮值VP", status: "waiting" },
+    ];
+    steps.forEach((s, i) => {
+      if (i < startAt) s.status = "done";
+      else if (i === startAt) s.status = "active";
+      else s.status = "waiting";
     });
+    return steps;
   }
 
-  function renderPersonPicker(id, label, value, hint) {
-    return `
-      <div class="form-field people-picker-field">
-        <label for="${id}Input">${label}</label>
-        ${hint ? `<span class="field-hint">${hint}</span>` : ""}
-        <div class="people-picker" data-picker="${id}">
-          <input type="text" class="people-picker-input" id="${id}Input" value="${esc(value)}" placeholder="输入姓名搜索…" autocomplete="off" />
-          <input type="hidden" id="${id}Value" value="${esc(value)}" />
-          <ul class="people-picker-list" id="${id}List" role="listbox"></ul>
-        </div>
-      </div>`;
+  function computeEstablishMissing(p) {
+    const m = [];
+    if (!p.applyReason?.trim()) m.push("申请原因");
+    if (!p.name?.trim()) m.push("项目名称");
+    if (!p.bu) m.push("负责事业部");
+    if (!p.desc?.trim()) m.push("项目简介");
+    if (!p.productOwner) m.push("项目产品负责人");
+    if (!p.techLead) m.push("项目技术负责人");
+    const files = p.applyFiles || {};
+    if (!files.application) m.push("立项申请书");
+    if (!files.approval) m.push("立项审批单");
+    return m;
   }
 
-  function filterPeoplePool(query, exclude) {
-    const q = (query || "").trim().toLowerCase();
-    const ex = new Set(exclude.filter(Boolean));
-    return PEOPLE_POOL.filter((n) => {
-      if (ex.has(n)) return false;
-      if (!q) return true;
-      return n.toLowerCase().includes(q);
-    });
-  }
-
-  function bindPersonPicker(id, excludeFn) {
-    const input = document.getElementById(`${id}Input`);
-    const hidden = document.getElementById(`${id}Value`);
-    const list = document.getElementById(`${id}List`);
-    if (!input || !hidden || !list) return;
-
-    const render = () => {
-      const exclude = excludeFn();
-      const items = filterPeoplePool(input.value, exclude).slice(0, 12);
-      if (!items.length) {
-        list.innerHTML = `<li class="people-picker-empty">无匹配人员</li>`;
-      } else {
-        list.innerHTML = items
-          .map((n) => `<li role="option" data-name="${esc(n)}" tabindex="-1">${esc(n)}</li>`)
-          .join("");
-      }
-      list.classList.add("open");
+  function buildEstablishApproval(p) {
+    const phase = p.applyStatus === "draft" ? "draft" : p.applyStatus === "reviewing" ? "reviewing" : p.applyStatus === "rejected" ? "rejected" : "approved";
+    const submitted = phase !== "draft";
+    const steps = defaultSteps(p, submitted ? 0 : -1).map((s) => ({ ...s, status: submitted && s.status === "active" ? "active" : "waiting" }));
+    if (phase === "approved") steps.forEach((s) => { if (s.status !== "rejected") s.status = "done"; });
+    const fileList = [];
+    const files = p.applyFiles || {};
+    if (files.application) fileList.push({ name: files.application, size: "—" });
+    if (files.approval) fileList.push({ name: files.approval, size: "—" });
+    if (files.supplement) fileList.push({ name: files.supplement, size: "—" });
+    return {
+      id: `ap-${p.id}-establish`,
+      type: "establish",
+      typeLabel: "立项申请",
+      submitted,
+      phase,
+      submitter: p.productOwner,
+      createdAt: p.createdAt || "2025-05-01 09:00",
+      submittedAt: submitted ? p.createdAt || new Date().toLocaleString("zh-CN", { hour12: false }) : null,
+      missingFields: computeEstablishMissing(p),
+      formData: { reason: p.applyReason || p.desc || "" },
+      requireFiles: false,
+      attachments: fileList.length ? fileList : p.desc ? [{ name: "立项说明.docx", size: "256KB" }] : [],
+      steps,
+      currentStepIndex: phase === "reviewing" ? 0 : 0,
+      payload: { bu: p.bu, name: p.name, establish: p.establish },
     };
-
-    const pick = (name) => {
-      hidden.value = name;
-      input.value = name;
-      list.classList.remove("open");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    };
-
-    input.addEventListener("focus", render);
-    input.addEventListener("input", render);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") list.classList.remove("open");
-      if (e.key === "Enter") {
-        const first = list.querySelector("li[data-name]");
-        if (first) {
-          e.preventDefault();
-          pick(first.dataset.name);
-        }
-      }
-    });
-    list.addEventListener("mousedown", (e) => {
-      const li = e.target.closest("li[data-name]");
-      if (li) {
-        e.preventDefault();
-        pick(li.dataset.name);
-      }
-    });
-    input.addEventListener("blur", () => {
-      setTimeout(() => list.classList.remove("open"), 120);
-    });
   }
 
-  function collectUnifiedMembers(p) {
-    const m = p.members || {};
+  function buildApprovals(p) {
     const list = [];
-    const seen = new Set();
-    (m.buMembers || []).forEach((name) => {
-      if (!name || seen.has(name)) return;
-      seen.add(name);
-      list.push({ name, bu: p.bu || getPersonBu(name) });
-    });
-    (m.crossBuMembers || []).forEach((x) => {
-      const name = typeof x === "string" ? x : x?.name;
-      if (!name || seen.has(name)) return;
-      seen.add(name);
-      list.push({ name, bu: (typeof x === "object" && x.bu) || getPersonBu(name) });
-    });
+
+    if (p.applyStatus) {
+      list.push(buildEstablishApproval(p));
+      return list;
+    }
+
+    if (p.id === 2) {
+      list.push({
+        id: `ap-${p.id}-online-draft`,
+        type: "status",
+        typeLabel: "上线申请",
+        submitted: false,
+        phase: "draft",
+        submitter: p.productOwner,
+        createdAt: "2025-05-29 16:00",
+        submittedAt: null,
+        missingFields: ["申请说明", "上线验收附件"],
+        formData: { reason: "" },
+        requireFiles: true,
+        attachments: [],
+        steps: defaultSteps(p, -1).map((s) => ({ ...s, status: "waiting" })),
+        currentStepIndex: 0,
+        payload: { type: "online", targetStatus: "上线" },
+      });
+    }
+
+    if (p.pendingOwnerChange) {
+      const oc = p.pendingOwnerChange;
+      list.push({
+        id: `ap-${p.id}-owner`,
+        type: "ownerChange",
+        typeLabel: `${oc.roleLabel}变更`,
+        submitted: true,
+        phase: "reviewing",
+        submitter: p.productOwner,
+        submittedAt: "2025-05-28 14:20",
+        missingFields: [],
+        requireFiles: false,
+        attachments: [{ name: "负责人变更说明.docx", size: "128KB" }],
+        steps: defaultSteps(p, 0),
+        currentStepIndex: 0,
+        payload: { ...oc, roleLabel: oc.roleLabel },
+      });
+    }
+
+    if (p.statusApproval) {
+      const sa = p.statusApproval;
+      const steps = defaultSteps(p, 1);
+      steps[0].status = "done";
+      steps[0].actedAt = "2025-05-30 14:00";
+      steps[1].status = "active";
+      list.push({
+        id: `ap-${p.id}-status`,
+        type: "status",
+        typeLabel: sa.typeLabel,
+        submitted: true,
+        phase: "reviewing",
+        submitter: p.productOwner,
+        submittedAt: sa.applyTime,
+        missingFields: [],
+        requireFiles: true,
+        attachments: [
+          { name: "联调测试报告.pdf", size: "2.1MB" },
+          { name: "上线检查清单.xlsx", size: "890KB" },
+        ],
+        formData: { reason: sa.reason },
+        steps,
+        currentStepIndex: 1,
+        payload: { type: sa.type, targetStatus: sa.targetStatus },
+      });
+    }
+
+    if (p.pendingApproval && p.approvalType === "delete") {
+      list.push({
+        id: `ap-${p.id}-delete`,
+        type: "delete",
+        typeLabel: "删除申请",
+        submitted: true,
+        phase: "reviewing",
+        submitter: p.productOwner,
+        submittedAt: "2025-05-25 09:00",
+        requireFiles: true,
+        attachments: [{ name: "项目下线/delete说明.pdf", size: "640KB" }],
+        formData: { reason: "业务迁移完成，申请删除项目档案" },
+        steps: defaultSteps(p, 0),
+        currentStepIndex: 0,
+        payload: {},
+      });
+    }
+
+    if (p.id === 7) {
+      const steps = defaultSteps(p);
+      steps[0].status = "done";
+      steps[0].actedAt = "2024-11-01 10:00";
+      steps[1].status = "done";
+      steps[1].actedAt = "2024-11-05 15:00";
+      list.push({
+        id: `ap-${p.id}-offline-done`,
+        type: "status",
+        typeLabel: "下线申请",
+        submitted: true,
+        phase: "approved",
+        submitter: p.productOwner,
+        submittedAt: "2024-10-28 09:00",
+        finishedAt: "2024-11-05 15:00",
+        formData: { reason: "业务收缩，语料库正式下线" },
+        attachments: [{ name: "下线批复.pdf", size: "480KB" }],
+        steps,
+        currentStepIndex: 1,
+        payload: { type: "offline", targetStatus: "下线" },
+      });
+    }
+
+    if (p.id === 12 && p.productOwner === "张三") {
+      const steps = defaultSteps(p);
+      steps[0].status = "done";
+      steps[0].actedAt = "2025-04-10 11:00";
+      steps[1].status = "rejected";
+      steps[1].actedAt = "2025-04-12 16:30";
+      list.push({
+        id: `ap-${p.id}-online-rejected`,
+        type: "status",
+        typeLabel: "上线申请",
+        submitted: true,
+        phase: "rejected",
+        submitter: p.productOwner,
+        submittedAt: "2025-04-08 14:00",
+        finishedAt: "2025-04-12 16:30",
+        formData: { reason: "验收材料不完整，暂缓上线" },
+        attachments: [{ name: "验收材料.zip", size: "3.2MB" }],
+        steps,
+        currentStepIndex: 1,
+        payload: { type: "online", targetStatus: "上线" },
+      });
+    }
+
+    if (p.pendingApproval && p.approvalType === "ownerChange" && !p.pendingOwnerChange) {
+      list.push({
+        id: `ap-${p.id}-owner-legacy`,
+        type: "ownerChange",
+        typeLabel: "负责人变更",
+        submitted: true,
+        phase: "reviewing",
+        submitter: p.productOwner,
+        submittedAt: "2025-05-27 11:00",
+        attachments: [],
+        steps: defaultSteps(p, 0),
+        currentStepIndex: 0,
+        payload: { roleLabel: "负责人变更" },
+      });
+    }
+
     return list;
   }
 
-  function renderPeopleEditBody(p) {
-    return `
-      <div class="people-edit-form">
-        <p class="form-section-title">项目负责人</p>
-        <div class="edit-form-grid" style="margin-bottom:16px">
-          ${renderPersonPicker("peProduct", "项目产品负责人", p.productOwner)}
-          ${renderPersonPicker("peTech", "项目技术负责人", p.techLead)}
-          <div class="form-field full change-approval-reason hidden" id="peChangeReasonWrap">
-            <label>变更说明 <span class="req">*</span></label>
-            <textarea id="peChangeReason" placeholder="变更产品/技术负责人时须填写说明"></textarea>
-          </div>
-        </div>
-        <p class="field-hint" style="margin-bottom:12px">变更<strong>产品/技术负责人</strong>须提交审批（与列表「编辑」逻辑一致）；项目成员可直接保存。保存后详情页仍按本事业部 / 跨事业部分开展示。</p>
-        <p class="form-section-title">项目成员</p>
-        <p class="field-hint" style="margin-bottom:8px">下方搜索姓名可添加成员（不区分事业部）；已添加成员点击 × 可移除</p>
-        <div class="member-chip-list" id="peMemberChips"></div>
-        <div class="people-picker people-picker-add" data-picker="peAdd">
-          <input type="text" class="people-picker-input" id="peAddInput" placeholder="搜索姓名添加成员…" autocomplete="off" />
-          <ul class="people-picker-list" id="peAddList" role="listbox"></ul>
-        </div>
-      </div>`;
+  const PROJECTS = RAW.map((p) => {
+    const project = { ...p };
+    project.initiateTime = resolveInitiateTime(project);
+    project.terminateTime = resolveTerminateTime(project);
+    project.projectId = genProjectId(project);
+    project.members = buildMembers(project);
+    project.timeline = buildTimeline(project);
+    project.activities = seedActivities(project);
+    project.attachments = project.status === "上线"
+      ? [{ name: "上线验收报告.pdf", size: "1.2MB" }, { name: "发布说明.docx", size: "340KB" }]
+      : project.pendingInfo
+        ? []
+        : [{ name: "立项批复.pdf", size: "520KB" }];
+    project.approvals = buildApprovals(project);
+    return project;
+  });
+
+  function getRoleId() {
+    return localStorage.getItem("ipm_role") || "superAdmin";
   }
 
-  function readPeopleEditOwners(p) {
-    const productOwner = document.getElementById("peProductValue")?.value.trim() || p.productOwner;
-    const techLead = document.getElementById("peTechValue")?.value.trim() || p.techLead;
-    const reason = document.getElementById("peChangeReason")?.value.trim() || "";
-    return {
-      productOwner,
-      techLead,
-      reason,
-      productChanged: productOwner !== p.productOwner,
-      techChanged: techLead !== p.techLead,
-      ownerChanged: productOwner !== p.productOwner || techLead !== p.techLead,
-    };
+  function setRoleId(id) {
+    localStorage.setItem("ipm_role", id);
   }
 
-  function bindPeopleEditOwners(p) {
-    if (hasActiveOwnerChange(p, "product")) {
-      document.getElementById("peProductInput")?.setAttribute("disabled", "disabled");
-    }
-    if (hasActiveOwnerChange(p, "tech")) {
-      document.getElementById("peTechInput")?.setAttribute("disabled", "disabled");
-    }
-    bindPersonPicker("peProduct", () => [document.getElementById("peTechValue")?.value]);
-    bindPersonPicker("peTech", () => [document.getElementById("peProductValue")?.value]);
-
-    const wrap = document.getElementById("peChangeReasonWrap");
-    const btnApproval = document.getElementById("peSubmitApproval");
-    const sync = () => {
-      const o = readPeopleEditOwners(p);
-      const need = o.productChanged || o.techChanged;
-      wrap?.classList.toggle("hidden", !need);
-      btnApproval?.classList.toggle("hidden", !need);
-    };
-    document.getElementById("peProductInput")?.addEventListener("input", sync);
-    document.getElementById("peTechInput")?.addEventListener("input", sync);
-    document.getElementById("peProductInput")?.addEventListener("change", sync);
-    document.getElementById("peTechInput")?.addEventListener("change", sync);
-    sync();
+  function getRole() {
+    return ROLES[getRoleId()] || ROLES.superAdmin;
   }
 
-  function bindPeopleEditForm(p) {
-    const chipsEl = document.getElementById("peMemberChips");
-    let members = collectUnifiedMembers(p);
+  function getProject(id) {
+    return PROJECTS.find((p) => p.id === Number(id));
+  }
 
-    const getOwners = () => {
-      const o = readPeopleEditOwners(p);
-      return [o.productOwner, o.techLead];
-    };
+  function statusClass(s) {
+    if (s === "上线") return "status-online";
+    if (s === "开发中") return "status-dev";
+    return "status-offline";
+  }
 
-    const memberNames = () => members.map((m) => m.name);
-
-    const renderChips = () => {
-      if (!members.length) {
-        chipsEl.innerHTML = '<span class="member-chips-empty">暂无成员，请下方搜索添加</span>';
-        return;
-      }
-      chipsEl.innerHTML = members
-        .map(
-          (m) =>
-            `<span class="member-chip">${esc(m.name)}<span class="member-chip-bu">${esc(m.bu)}</span><button type="button" class="member-chip-remove" data-name="${esc(m.name)}" aria-label="移除">×</button></span>`
-        )
-        .join("");
-      chipsEl.querySelectorAll(".member-chip-remove").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          members = members.filter((x) => x.name !== btn.dataset.name);
-          renderChips();
-        });
-      });
-    };
-
-    const addInput = document.getElementById("peAddInput");
-    const addList = document.getElementById("peAddList");
-
-    const renderAddList = () => {
-      const exclude = [...getOwners(), ...memberNames()];
-      const items = filterPeoplePool(addInput.value, exclude).slice(0, 12);
-      if (!items.length) {
-        addList.innerHTML = `<li class="people-picker-empty">无匹配人员</li>`;
-      } else {
-        addList.innerHTML = items
-          .map((n) => {
-            const bu = getPersonBu(n);
-            return `<li role="option" data-name="${esc(n)}" data-bu="${esc(bu)}">+ ${esc(n)}<span class="people-picker-bu">${esc(bu)}</span></li>`;
-          })
-          .join("");
-      }
-      addList.classList.add("open");
-    };
-
-    addInput.addEventListener("focus", renderAddList);
-    addInput.addEventListener("input", renderAddList);
-    addList.addEventListener("mousedown", (e) => {
-      const li = e.target.closest("li[data-name]");
-      if (!li) return;
-      e.preventDefault();
-      const name = li.dataset.name;
-      if (!memberNames().includes(name)) {
-        members.push({ name, bu: li.dataset.bu || getPersonBu(name) });
-        renderChips();
-      }
-      addInput.value = "";
-      addList.classList.remove("open");
-    });
-    addInput.addEventListener("blur", () => {
-      setTimeout(() => addList.classList.remove("open"), 120);
-    });
-
-    renderChips();
-    bindPeopleEditOwners(p);
-
-    return () => ({
-      members: members.map((m) => ({ name: m.name, bu: m.bu })),
-      ...readPeopleEditOwners(p),
+  function addActivity(project, activity) {
+    project.activities.unshift({
+      id: `${project.id}-${Date.now()}`,
+      ...activity,
     });
   }
 
-  function formatMembersLabel(buNames, crossList) {
-    const parts = [...(buNames || [])];
-    (crossList || []).forEach((x) => {
-      const name = typeof x === "string" ? x : x?.name;
-      const bu = typeof x === "object" ? x?.bu : "";
-      if (name) parts.push(bu ? `${name}（${bu}）` : name);
+  function sortProjects(list) {
+    return [...list].sort((a, b) => {
+      const sa = STATUS_ORDER[a.status] ?? 9;
+      const sb = STATUS_ORDER[b.status] ?? 9;
+      if (sa !== sb) return sa - sb;
+      const oa = a.online === "-" ? "9999" : a.online;
+      const ob = b.online === "-" ? "9999" : b.online;
+      if (oa !== ob) return oa.localeCompare(ob);
+      return a.bu.localeCompare(b.bu, "zh-CN");
     });
-    return parts.join("、") || "—";
   }
 
-  function applyPeopleToProject(p, data) {
-    const oldBu = [...(p.members?.buMembers || [])];
-    const oldCross = [...(p.members?.crossBuMembers || [])];
-    const productOwner = data.productOwner ?? p.productOwner;
-    const techLead = data.techLead ?? p.techLead;
-    if (!p.members) {
-      p.members = { buLead: p.buLead, productOwner, techLead, buMembers: [], crossBuMembers: [] };
-    }
-    const buMembers = [];
-    const crossBuMembers = [];
-    const seen = new Set();
-    (data.members || []).forEach((m) => {
-      const name = typeof m === "string" ? m : m?.name;
-      if (!name || name === productOwner || name === techLead || seen.has(name)) return;
-      seen.add(name);
-      const bu = (typeof m === "object" && m.bu) || getPersonBu(name);
-      if (bu === p.bu) buMembers.push(name);
-      else crossBuMembers.push({ name, bu });
-    });
-    p.members.buMembers = buMembers;
-    p.members.crossBuMembers = crossBuMembers;
-    p.members.productOwner = productOwner;
-    p.members.techLead = techLead;
-    return { oldBu, oldCross };
+  function isApplyProject(p) {
+    return !!p?.applyStatus;
   }
 
-  function renderBasicEditBody(p) {
-    const buOpts = Object.keys(BU_CODES)
-      .map((b) => `<option value="${esc(b)}" ${b === p.bu ? "selected" : ""}>${esc(b)}</option>`)
-      .join("");
-    return `
-      <div class="edit-form-grid">
-        <div class="form-field"><label>项目名称</label><input id="editName" value="${esc(p.name)}" /></div>
-        <div class="form-field"><label>负责事业部</label><select id="editBu">${buOpts}</select></div>
-        <div class="form-field"><label>事业部负责人</label><input id="editBuLead" disabled value="${esc(p.buLead)}" /></div>
-        <div class="form-field"><label>立项年月</label><input id="editEstablish" type="month" value="${esc(p.establish)}" /></div>
-        <div class="form-field"><label>项目ID</label><input id="editProjectId" disabled value="${esc(p.projectId)}" /></div>
-        ${renderPersonPicker("editProduct", "项目产品负责人", p.productOwner)}
-        ${renderPersonPicker("editTech", "项目技术负责人", p.techLead)}
-        <div class="form-field full"><label>项目简介</label><textarea id="editDesc">${esc(p.desc || "")}</textarea></div>
-        <div class="form-field full change-approval-reason hidden" id="changeReasonWrap">
-          <label>变更说明 <span class="req">*</span></label>
-          <textarea id="changeReason" placeholder="变更事业部或负责人时须填写说明"></textarea>
-        </div>
-      </div>
-      <p class="field-hint">变更<strong>负责事业部、产品/技术负责人</strong>须提交审批；项目名称、立项年月、简介可直接保存。成员与负责人也可在「编辑人员」中维护（负责人变更同样须审批）。</p>`;
+  function sortApplyProjects(list) {
+    return [...list].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   }
 
-  function readBasicEditForm(p) {
-    const bu = document.getElementById("editBu").value;
-    const productOwner = document.getElementById("editProductValue")?.value.trim() || p.productOwner;
-    const techLead = document.getElementById("editTechValue")?.value.trim() || p.techLead;
-    return {
-      name: document.getElementById("editName").value.trim() || p.name,
-      bu,
-      buLead: BU_LEADS[bu] || p.buLead,
-      establish: document.getElementById("editEstablish").value || p.establish,
-      desc: document.getElementById("editDesc").value.trim(),
-      productOwner,
-      techLead,
-      reason: document.getElementById("changeReason")?.value.trim() || "",
-      buChanged: bu !== p.bu,
-      productChanged: productOwner !== p.productOwner,
-      techChanged: techLead !== p.techLead,
-      ownerChanged: productOwner !== p.productOwner || techLead !== p.techLead,
-    };
-  }
-
-  function hasActiveBuChange(p) {
-    return (p.approvals || []).some((a) => a.type === "buChange" && (a.phase === "reviewing" || a.phase === "draft"));
-  }
-
-  function hasActiveOwnerChange(p, role) {
-    return (p.approvals || []).some(
-      (a) => a.type === "ownerChange" && a.payload?.role === role && (a.phase === "reviewing" || a.phase === "draft")
-    );
-  }
-
-  function bindBasicEditForm(p) {
-    const editBu = document.getElementById("editBu");
-    const editBuLead = document.getElementById("editBuLead");
-    const wrap = document.getElementById("changeReasonWrap");
-    const btnSubmit = document.getElementById("btnSubmitApproval");
-
-    if (hasActiveBuChange(p)) editBu.disabled = true;
-    if (hasActiveOwnerChange(p, "product")) {
-      document.getElementById("editProductInput")?.setAttribute("disabled", "disabled");
-    }
-    if (hasActiveOwnerChange(p, "tech")) {
-      document.getElementById("editTechInput")?.setAttribute("disabled", "disabled");
-    }
-
-    bindPersonPicker("editProduct", () => [document.getElementById("editTechValue")?.value]);
-    bindPersonPicker("editTech", () => [document.getElementById("editProductValue")?.value]);
-
-    const syncApprovalUi = () => {
-      const data = readBasicEditForm(p);
-      editBuLead.value = BU_LEADS[data.bu] || "—";
-      const needApproval =
-        (data.buChanged && !editBu.disabled) || data.productChanged || data.techChanged;
-      wrap?.classList.toggle("hidden", !needApproval);
-      btnSubmit?.classList.toggle("hidden", !needApproval);
-    };
-    editBu.addEventListener("change", syncApprovalUi);
-    document.getElementById("editProductInput")?.addEventListener("change", syncApprovalUi);
-    document.getElementById("editTechInput")?.addEventListener("change", syncApprovalUi);
-    document.getElementById("editProductInput")?.addEventListener("input", syncApprovalUi);
-    document.getElementById("editTechInput")?.addEventListener("input", syncApprovalUi);
-    syncApprovalUi();
-  }
-
-  function submitOwnerChangeApproval(p, role, to, reason) {
-    const label = role === "product" ? "项目产品负责人" : "项目技术负责人";
-    const current = role === "product" ? p.productOwner : p.techLead;
-    if (to === current) return null;
-    const ap = {
-      id: `ap-${p.id}-owner-${role}-${Date.now()}`,
-      type: "ownerChange",
-      typeLabel: `${label}变更`,
-      phase: "reviewing",
-      submitted: true,
-      submitter: p.productOwner,
-      submittedAt: new Date().toLocaleString("zh-CN", { hour12: false }),
-      formData: { reason },
-      missingFields: [],
-      attachments: [{ name: "负责人变更说明.docx", size: "128KB" }],
-      steps: [
-        { key: "buLead", label: "事业部负责人", assignee: p.buLead, status: "active" },
-        { key: "executive", label: "超级管理层", assignee: "轮值VP", status: "waiting" },
-      ],
-      currentStepIndex: 0,
-      payload: { role, roleLabel: label, from: current, to, reason },
-    };
-    p.approvals = (p.approvals || []).filter(
-      (a) => !(a.type === "ownerChange" && a.payload?.role === role && (a.phase === "reviewing" || a.phase === "draft"))
-    );
-    p.approvals.push(ap);
-    window.IPMApproval.submitApproval(p, ap);
-    window.IPMApproval.syncLegacyFromApprovals(p);
-    addActivity(p, {
-      type: "approval",
-      operator: getRole().label.split("（")[0],
-      time: ap.submittedAt,
-      summary: `${label}变更申请`,
-      changes: [{ field: label, old: current, new: to + "（待审批）" }],
-    });
-    return ap;
-  }
-
-  function saveBasicFieldsDirect(p, data) {
-    const changes = [];
-    const old = { name: p.name, establish: p.establish, desc: p.desc || "" };
-    p.name = data.name;
-    p.establish = data.establish;
-    p.desc = data.desc;
-    if (p.pendingInfo && p.desc) p.pendingInfo = false;
-    const newPid = genProjectId(p);
-    if (newPid !== p.projectId) {
-      changes.push({ field: "项目ID", old: p.projectId, new: newPid });
-      p.projectId = newPid;
-    }
-    if (old.name !== p.name) changes.push({ field: "项目名称", old: old.name, new: p.name });
-    if (old.establish !== p.establish) changes.push({ field: "立项年月", old: old.establish, new: p.establish });
-    if (old.desc !== p.desc) changes.push({ field: "项目简介", old: old.desc || "—", new: p.desc || "—" });
-    if (changes.length) {
-      addActivity(p, {
-        type: "sync",
-        operator: getRole().label.split("（")[0],
-        time: new Date().toLocaleString("zh-CN", { hour12: false }),
-        summary: "更新基础信息",
-        changes,
-      });
-    }
-    return changes.length > 0;
-  }
-
-  function submitBuChangeApproval(p, data) {
-    if (!data.reason) {
-      showToast("请填写变更说明");
-      return null;
-    }
-    const ap = {
-      id: `ap-${p.id}-bu-${Date.now()}`,
-      type: "buChange",
-      typeLabel: "事业部变更",
-      phase: "reviewing",
-      submitted: true,
-      submitter: p.productOwner,
-      submittedAt: new Date().toLocaleString("zh-CN", { hour12: false }),
-      formData: { reason: data.reason },
-      missingFields: [],
-      attachments: [{ name: "事业部变更说明.docx", size: "96KB" }],
-      steps: [
-        { key: "buLead", label: "事业部负责人", assignee: BU_LEADS[data.bu] || p.buLead, status: "active" },
-        { key: "executive", label: "超级管理层", assignee: "轮值VP", status: "waiting" },
-      ],
-      currentStepIndex: 0,
-      payload: {
-        fromBu: p.bu,
-        toBu: data.bu,
-        fromLead: p.buLead,
-        toBuLead: data.buLead,
-        name: data.name,
-        desc: data.desc,
-        establish: data.establish,
-      },
-    };
-    p.approvals = (p.approvals || []).filter((a) => a.type !== "buChange" || a.phase === "approved" || a.phase === "rejected");
-    p.approvals.push(ap);
-    window.IPMApproval.submitApproval(p, ap);
-    addActivity(p, {
-      type: "approval",
-      operator: getRole().label.split("（")[0],
-      time: ap.submittedAt,
-      summary: "事业部变更申请",
-      changes: [
-        { field: "负责事业部", old: p.bu, new: data.bu + "（待审批）" },
-        { field: "项目名称", old: p.name, new: data.name },
-      ],
-    });
-    return ap;
-  }
-
-  function openEditBasicModal(p, onSaved) {
-    initModalShell();
-    if (
-      !openModal(
-        "编辑基础信息",
-        renderBasicEditBody(p),
-        `<button type="button" class="btn" data-close>取消</button>
-         <button type="button" class="btn" id="saveBasic">保存</button>
-         <button type="button" class="btn btn-primary hidden" id="btnSubmitApproval">提交审批</button>`,
-        "large"
-      )
-    )
-      return;
-    bindBasicEditForm(p);
-
-    document.getElementById("saveBasic").onclick = () => {
-      const data = readBasicEditForm(p);
-      if (data.buChanged || data.ownerChanged) {
-        showToast("事业部或负责人已变更，请填写说明后点击「提交审批」");
-        return;
-      }
-      window.IPMApproval.confirmAction({
-        title: "确认保存",
-        message: "确定保存基础信息修改吗？",
-        confirmText: "确认保存",
-        onConfirm: () => {
-          saveBasicFieldsDirect(p, data);
-          closeModal();
-          showToast("基础信息已保存");
-          onSaved?.();
-        },
-      });
-    };
-
-    document.getElementById("btnSubmitApproval").onclick = () => {
-      const data = readBasicEditForm(p);
-      if (!data.buChanged && !data.ownerChanged) {
-        showToast("未变更事业部或负责人，无需提交审批");
-        return;
-      }
-      if (!data.reason) {
-        showToast("请填写变更说明");
-        return;
-      }
-      let msg = "确定提交以下变更审批吗？";
-      if (data.buChanged) msg += `<p>负责事业部：<strong>${esc(p.bu)}</strong> → <strong>${esc(data.bu)}</strong></p>`;
-      if (data.productChanged) msg += `<p>产品负责人：<strong>${esc(p.productOwner)}</strong> → <strong>${esc(data.productOwner)}</strong></p>`;
-      if (data.techChanged) msg += `<p>技术负责人：<strong>${esc(p.techLead)}</strong> → <strong>${esc(data.techLead)}</strong></p>`;
-      window.IPMApproval.confirmAction({
-        title: "确认提交审批",
-        message: msg,
-        confirmText: "确认提交",
-        onConfirm: () => {
-          if (data.buChanged) submitBuChangeApproval(p, data);
-          if (data.productChanged) submitOwnerChangeApproval(p, "product", data.productOwner, data.reason);
-          if (data.techChanged) submitOwnerChangeApproval(p, "tech", data.techLead, data.reason);
-          if (data.name !== p.name || data.desc !== (p.desc || "") || data.establish !== p.establish) {
-            saveBasicFieldsDirect(p, { ...data, bu: p.bu, buLead: p.buLead, buChanged: false });
-          }
-          closeModal();
-          showToast("已提交审批");
-          onSaved?.();
-        },
-      });
-    };
-    bindModalClose();
-  }
-
-  function savePeopleMembersOnly(p, data) {
-    const { oldBu, oldCross } = applyPeopleToProject(p, data);
-    const oldLabel = formatMembersLabel(oldBu, oldCross);
-    const newLabel = formatMembersLabel(p.members.buMembers, p.members.crossBuMembers);
-    if (oldLabel !== newLabel) {
-      addActivity(p, {
-        type: "member",
-        operator: getRole().label.split("（")[0],
-        time: new Date().toLocaleString("zh-CN", { hour12: false }),
-        summary: "更新项目成员",
-        changes: [{ field: "项目成员", old: oldLabel, new: newLabel }],
-      });
+  function finishEstablishApproval(project) {
+    delete project.applyStatus;
+    project.projectId = genProjectId(project);
+    project.initiateTime = resolveInitiateTime(project);
+    project.terminateTime = resolveTerminateTime(project);
+    project.pendingInfo = !project.desc?.trim();
+    if (project.timeline?.[0]) {
+      project.timeline[0].done = true;
+      project.timeline[0].desc = "立项审批通过";
     }
   }
 
-  function openPeopleEditModal(p, onSaved) {
-    initModalShell();
-    if (
-      !openModal(
-        "编辑人员",
-        renderPeopleEditBody(p),
-        `<button type="button" class="btn" data-close>取消</button>
-         <button type="button" class="btn" id="savePeople">保存</button>
-         <button type="button" class="btn btn-primary hidden" id="peSubmitApproval">提交审批</button>`,
-        "large"
-      )
-    )
-      return;
-    const readForm = bindPeopleEditForm(p);
-
-    document.getElementById("savePeople").onclick = () => {
-      const data = readForm();
-      if (data.ownerChanged) {
-        showToast("负责人已变更，请填写说明后点击「提交审批」");
-        return;
-      }
-      window.IPMApproval.confirmAction({
-        title: "确认保存",
-        message: "确定保存项目成员吗？",
-        confirmText: "确认保存",
-        onConfirm: () => {
-          savePeopleMembersOnly(p, data);
-          closeModal();
-          showToast("成员已保存");
-          onSaved?.();
-        },
-      });
-    };
-
-    document.getElementById("peSubmitApproval").onclick = () => {
-      const data = readForm();
-      if (!data.ownerChanged) {
-        showToast("未变更负责人，无需提交审批");
-        return;
-      }
-      if (!data.reason) {
-        showToast("请填写变更说明");
-        return;
-      }
-      let msg = "确定提交以下负责人变更审批吗？";
-      if (data.productChanged) {
-        msg += `<p>产品负责人：<strong>${esc(p.productOwner)}</strong> → <strong>${esc(data.productOwner)}</strong></p>`;
-      }
-      if (data.techChanged) {
-        msg += `<p>技术负责人：<strong>${esc(p.techLead)}</strong> → <strong>${esc(data.techLead)}</strong></p>`;
-      }
-      window.IPMApproval.confirmAction({
-        title: "确认提交审批",
-        message: msg,
-        confirmText: "确认提交",
-        onConfirm: () => {
-          if (data.productChanged) submitOwnerChangeApproval(p, "product", data.productOwner, data.reason);
-          if (data.techChanged) submitOwnerChangeApproval(p, "tech", data.techLead, data.reason);
-          savePeopleMembersOnly(p, data);
-          closeModal();
-          showToast("已提交审批");
-          onSaved?.();
-        },
-      });
-    };
-    bindModalClose();
-  }
-
-  function renderApplyFormBody(p) {
-    const buOpts = Object.keys(BU_CODES)
-      .map((b) => `<option value="${esc(b)}" ${p && p.bu === b ? "selected" : ""}>${esc(b)}</option>`)
-      .join("");
-    const bu = p?.bu || Object.keys(BU_CODES)[0];
-    const buLead = p?.buLead || BU_LEADS[bu] || "";
-    return `
-      <div class="edit-form-grid">
-        <div class="form-field"><label>项目名称 <span class="req">*</span></label>
-          <input id="applyName" value="${esc(p?.name || "")}" placeholder="产品/项目名称" /></div>
-        <div class="form-field"><label>负责事业部 <span class="req">*</span></label>
-          <select id="applyBu">${buOpts}</select></div>
-        <div class="form-field"><label>事业部负责人</label>
-          <input id="applyBuLead" disabled value="${esc(buLead)}" /></div>
-        <div class="form-field"><label>立项年月 <span class="req">*</span></label>
-          <input id="applyEstablish" type="month" value="${esc(p?.establish || "")}" /></div>
-        ${renderPersonPicker("applyProduct", "项目产品负责人", p?.productOwner || "")}
-        ${renderPersonPicker("applyTech", "项目技术负责人", p?.techLead || "")}
-        <div class="form-field full"><label>项目简介</label>
-          <textarea id="applyDesc" placeholder="简要描述项目目标与范围">${esc(p?.desc || "")}</textarea></div>
-      </div>
-      <p class="field-hint">可先「仅保存」草稿，补全简介后「提交申请」进入立项审批流程；审批通过后生成项目ID并进入项目管理列表。</p>`;
-  }
-
-  function readApplyForm(p) {
-    const bu = document.getElementById("applyBu").value;
-    return {
-      name: document.getElementById("applyName").value.trim(),
-      bu,
-      buLead: BU_LEADS[bu] || "",
-      establish: document.getElementById("applyEstablish").value,
-      productOwner: document.getElementById("applyProductValue").value.trim(),
-      techLead: document.getElementById("applyTechValue").value.trim(),
-      desc: document.getElementById("applyDesc").value.trim(),
-    };
-  }
-
-  function bindApplyForm(p) {
-    const applyBu = document.getElementById("applyBu");
-    const applyBuLead = document.getElementById("applyBuLead");
-    applyBu.addEventListener("change", () => {
-      applyBuLead.value = BU_LEADS[applyBu.value] || "—";
-    });
-    bindPersonPicker("applyProduct", () => [document.getElementById("applyTechValue")?.value]);
-    bindPersonPicker("applyTech", () => [document.getElementById("applyProductValue")?.value]);
-  }
-
-  function upsertApplyProject(existing, data, asDraft) {
-    let proj = existing;
-    if (!proj) {
-      const newId = Math.max(0, ...window.IPM.PROJECTS.map((x) => x.id)) + 1;
-      proj = {
-        id: newId,
-        applyStatus: asDraft ? "draft" : "reviewing",
-        status: "开发中",
-        online: "-",
-        offline: "-",
-        pendingInfo: !data.desc,
-        pendingApproval: false,
-        createdAt: new Date().toLocaleString("zh-CN", { hour12: false }),
-        attachments: [],
-        activities: [],
-      };
-      window.IPM.PROJECTS.push(proj);
-    }
-    Object.assign(proj, data);
-    proj.applyStatus = asDraft ? "draft" : "reviewing";
-    proj.pendingInfo = !data.desc?.trim();
-    proj.projectId = genProjectId(proj);
-    proj.members = {
-      buLead: proj.buLead,
-      productOwner: proj.productOwner,
-      techLead: proj.techLead,
-      buMembers: proj.members?.buMembers || [],
-      crossBuMembers: [],
-    };
-    proj.timeline = proj.timeline || [
-      { key: "establish", label: "立项", date: (proj.establish || "") + "-01", done: false, desc: asDraft ? "草稿" : "待审批" },
-      { key: "dev", label: "开发", date: "-", done: false, desc: "—" },
-      { key: "online", label: "上线", date: "-", done: false, desc: "—" },
-      { key: "offline", label: "下线", date: "-", done: false, desc: "—" },
-    ];
-    proj.approvals = [window.IPM.buildEstablishApproval(proj)];
-    const ap = proj.approvals[0];
-    ap.formData = { reason: data.desc };
-    ap.missingFields = !data.desc?.trim() ? ["项目简介"] : [];
-    if (!asDraft) {
-      window.IPMApproval.submitApproval(proj, ap);
-      addActivity(proj, {
-        type: "create",
-        operator: getRole().label.split("（")[0],
-        time: ap.submittedAt,
-        summary: "提交内部项目立项申请",
-        changes: [{ field: "项目名称", old: "—", new: proj.name }],
-      });
-    } else {
-      ap.phase = "draft";
-      ap.submitted = false;
-      proj.applyStatus = "draft";
-    }
-    return proj;
-  }
-
-  function openApplyFormModal(p, onSaved) {
-    initModalShell();
-    if (
-      !openModal(
-        p ? "编辑立项申请" : "新建立项申请",
-        renderApplyFormBody(p),
-        `<button type="button" class="btn" data-close>取消</button>
-         <button type="button" class="btn" id="saveApplyDraft">仅保存</button>
-         <button type="button" class="btn btn-primary" id="submitApply">提交申请</button>`,
-        "large"
-      )
-    )
-      return;
-    bindApplyForm(p);
-
-    document.getElementById("saveApplyDraft").onclick = () => {
-      const data = readApplyForm(p);
-      if (!data.name || !data.bu || !data.establish || !data.productOwner || !data.techLead) {
-        showToast("请填写必填项");
-        return;
-      }
-      upsertApplyProject(p, data, true);
-      closeModal();
-      showToast("已保存草稿");
-      onSaved?.();
-    };
-
-    document.getElementById("submitApply").onclick = () => {
-      const data = readApplyForm(p);
-      if (!data.name || !data.bu || !data.establish || !data.productOwner || !data.techLead) {
-        showToast("请填写必填项");
-        return;
-      }
-      if (!data.desc) {
-        showToast("请填写项目简介");
-        return;
-      }
-      window.IPMApproval.confirmAction({
-        title: "确认提交申请",
-        message: "确定提交内部项目立项申请吗？提交后将进入审批流程。",
-        confirmText: "确认提交",
-        onConfirm: () => {
-          const proj = upsertApplyProject(p, data, false);
-          closeModal();
-          showToast("立项申请已提交");
-          onSaved?.();
-        },
-      });
-    };
-    bindModalClose();
-  }
-
-  window.IPMEdit = {
-    esc,
-    showToast,
-    openModal,
-    closeModal,
-    bindModalClose,
-    openEditBasicModal,
-    openPeopleEditModal,
-    openApplyFormModal,
-    initModalShell,
-    renderPersonPicker,
-    bindPersonPicker,
+  global.IPM = {
+    BU_CODES,
+    BU_LEADS,
+    ROLES,
+    STATUS_ORDER,
+    PEOPLE_POOL,
+    PEOPLE_BU,
+    PROJECTS,
+    genProjectId,
+    getPersonBu,
+    getRoleId,
+    setRoleId,
+    getRole,
+    getProject,
+    statusClass,
+    addActivity,
+    sortProjects,
+    isApplyProject,
+    sortApplyProjects,
+    finishEstablishApproval,
+    buildEstablishApproval,
   };
-
-  document.addEventListener("DOMContentLoaded", initModalShell);
-})(window);
+})(typeof window !== "undefined" ? window : globalThis);
